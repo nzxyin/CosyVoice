@@ -89,4 +89,12 @@ All notable changes to this clone. Upstream CosyVoice code is untouched; entries
   getting a meaningless 0.20 "GT->target" figure. cross/esd refolded. First per-emotion result
   (cross/esd): emotion cosine Neutral 0.912, Angry 0.891, Sad 0.786, Happy 0.768, Surprise 0.464;
   emotion2vec labels the output as the target emotion 96/83/64/60/19% of the time (GT: 93-100%).
+- WER parity check across the sibling evals (user request): EmoSphere++ session confirmed "same" on
+  every point (ASR setup, raw + normalized definitions, empty-reference rule, references, reporting
+  order); articulatory-tts matches by code (GH #32); XTTS session confirmed "same" and aligned its
+  empty-normalized-reference rule to b040aa1 (its LibriTTS WER-n moved by <0.006 pp). GT WER
+  floors recorded in CLAUDE.md for reading the tables.
+- Side per-utt jobs: cross/vctk 10358134 COMPLETED (7m46s); self/vctk 10358133 preempted twice and
+  finished on the third run in 9 s thanks to the resumable per-utterance JSON (n=2595: one pair under
+  the 0.1 s floor).
 

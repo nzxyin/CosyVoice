@@ -55,6 +55,25 @@ emotion2vec+ large / CommonAccent embedding cosine, prediction vs. ground truth.
 | cross | esd | 1500 | 14.65 | 2.27 | 3.524 | 3.193 | 0.580 | 0.764 | 0.790 | 0.63 |
 | cross | vctk | 2596 | 4.49 | 1.64 | 3.603 | 3.189 | 0.632 | 0.914 | 0.791 | 0.52 |
 
+WER implementation parity (2026-09-08): the EmoSphere++ eval session confirmed point-by-point
+that its scorer matches ours (Whisper large-v3 fp32 greedy one-utterance-per-call, raw lowercased
+punctuation-kept `wer`, Whisper-normalizer `wer_whisper_normalized` with empty-normalized-reference
+pairs skipped, same reference texts/splits, both keys reported raw-first); articulatory-tts's
+`eval_full_testset.py` matches by code inspection (its `wer` is the normalized variant since GH #32,
+commit b040aa1); the XTTS session confirmed the same on every point and aligned the one
+difference it had (its normalized WER used to keep pairs with an empty normalized reference; now the
+b040aa1 rule -- a one-utterance change on each LibriTTS set). XTTS reports `wer_whisper_normalized`
+as its headline; its `self`-prompt WER-n for reference: LJSpeech 2.44, test-clean 2.59, test-other
+2.95, VCTK 1.42 (results under `/data/user_data/xoy/xtts_accent_eval/.../self/`).
+
+Ground-truth WER floors (Whisper on the raw recordings, corpus-level, raw / normalized; from
+articulatory-tts's `gt_transcripts_*.json` as recomputed by the EmoSphere++ session, VCTK raw from
+articulatory-tts CLAUDE.md): LJSpeech 6.97 / 1.60, LibriTTS test-clean 10.60 / 2.27, test-other
+13.51 / 4.11, ESD 15.05 / 2.78, VCTK 3.70 / (pending articulatory-tts's GH #32 rescore). Read the WER
+columns against these: CosyVoice3 `cross` normalized WER is at or below the floor on every set
+(LJSpeech 1.94 vs 1.60, test-clean 2.40 vs 2.27, test-other 2.97 vs 4.11, ESD 2.27 vs 2.78), i.e.
+its intelligibility is indistinguishable from the recordings themselves at this metric's resolution.
+
 Reading notes so far:
 - Raw WER is dominated by punctuation/casing formatting, not recognition: normalized WER is
   1.6-3.0% on every set (ESD 14.65% raw -> 2.27% normalized). Report the normalized column as
