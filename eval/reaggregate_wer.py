@@ -56,6 +56,10 @@ def main():
                         import numpy as np
                         e["pred_gt_dur_ratio"] = {"mean": float(np.mean(ratios)),
                                                   "ci95": float(1.96 * np.std(ratios) / np.sqrt(len(ratios))), "n": len(ratios)}
+    # degenerate-output counters (added to the scorer later than the first result sets)
+    d["metrics"]["n_pred_under_0p5s"] = {"mean": sum(1 for r in recs if r.get("pred_seconds", 1.0) < 0.5), "ci95": None, "n": len(recs)}
+    d["metrics"]["n_pred_under_quarter_gt"] = {"mean": sum(1 for r in recs if r.get("pred_seconds", 1.0) < 0.25 * r.get("gt_seconds", 0.0)),
+                                               "ci95": None, "n": len(recs)}
     d["wer_reaggregated_from_per_utt"] = True
     after = {k: d["metrics"].get(k, {}).get("mean") for k in before}
     tmp = args.results + ".tmp"

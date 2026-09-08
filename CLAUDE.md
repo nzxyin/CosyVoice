@@ -32,60 +32,122 @@ upstream's `.gitignore` has `**/*build*`, which hides `eval/build_env.sbatch` an
 
 ## Current direction (2026-09-08)
 
-Run the five test sets x two prompt modes (`self` for comparability with the sibling baselines,
-`cross` as the standard zero-shot protocol), then tabulate with `eval/summarize_results.py` and
-record the numbers here. Status and results are filled in below as jobs finish.
+Done: the five test sets x two prompt modes (`self` for comparability with the sibling baselines,
+`cross` as the standard zero-shot protocol) are synthesized, scored and tabulated below. Possible
+follow-ups, none started: the `llm.rl.pt` RL variant (same pipeline, `CKPT_NAME`/`--model_dir`),
+`--no_text_frontend`, fp16/TRT speed, and re-reading the tables once articulatory-tts's GH #32
+rescore publishes the normalized VCTK floor.
 
 ## Status / results
 
-### Interim results (2026-09-08 11:40 EDT; 7/10 sets scored, `self` esd/libritts still scoring)
+### Final results (2026-09-08; all 10 sets scored; `eval/results/summary_Fun-CosyVoice3-0.5B-2512.md` has the full tables incl. per-speaker)
 
 WER raw = lowercased, punctuation kept (the pre-GH#32 articulatory-tts convention, also the XTTS
-port's `wer`); WER norm = Whisper EnglishTextNormalizer on both sides (= articulatory-tts's `wer`
-since its GH #32 fix, 2026-09-08). Corpus-level, n = scored utterances. Spk/Emo/Acc = ECAPA /
-emotion2vec+ large / CommonAccent embedding cosine, prediction vs. ground truth.
+port's `wer`); WER norm = Whisper EnglishTextNormalizer on both sides, empty normalized references
+skipped (= articulatory-tts's `wer` since its GH #32 fix, 2026-09-08). Corpus-level. n = scored /
+synthesizable utterances. Spk / Emo / Acc = ECAPA / emotion2vec+ large / CommonAccent embedding cosine,
+prediction vs. ground truth (mean; ci95 in the JSONs). RTF = generation wall time / audio seconds,
+fp32 non-streaming on L40S/A6000/A100 (`preempt`). `<0.5s` = degenerate early-EOS outputs, scored as-is.
 
-| prompt | dataset | n | WER% raw | WER% norm | UTMOSv2 | DNSMOS ovr | Spk cos | Emo cos | Acc cos | RTF |
-|---|---|---|---|---|---|---|---|---|---|---|
-| self | ljspeech | 150 | 9.07 | 2.74 | 3.949 | 3.406 | 0.893 | 0.973 | 0.853 | 0.53 |
-| self | vctk | 2596 | 4.82 | 2.26 | 3.481 | 3.169 | 0.829 | 0.943 | 0.877 | 0.79 |
-| cross | ljspeech | 150 | 8.61 | 1.94 | 3.946 | 3.422 | 0.787 | 0.968 | 0.818 | 0.80 |
-| cross | libritts_test_clean | 4830 | 11.28 | 2.40 | 3.538 | 3.271 | 0.608 | 0.918 | 0.823 | 0.54 |
-| cross | libritts_test_other | 5106 | 13.14 | 2.97 | 3.399 | 3.189 | 0.544 | 0.900 | 0.756 | 0.71 |
-| cross | esd | 1500 | 14.65 | 2.27 | 3.524 | 3.193 | 0.580 | 0.764 | 0.790 | 0.63 |
-| cross | vctk | 2596 | 4.49 | 1.64 | 3.603 | 3.189 | 0.632 | 0.914 | 0.791 | 0.52 |
-
-WER implementation parity (2026-09-08): the EmoSphere++ eval session confirmed point-by-point
-that its scorer matches ours (Whisper large-v3 fp32 greedy one-utterance-per-call, raw lowercased
-punctuation-kept `wer`, Whisper-normalizer `wer_whisper_normalized` with empty-normalized-reference
-pairs skipped, same reference texts/splits, both keys reported raw-first); articulatory-tts's
-`eval_full_testset.py` matches by code inspection (its `wer` is the normalized variant since GH #32,
-commit b040aa1); the XTTS session confirmed the same on every point and aligned the one
-difference it had (its normalized WER used to keep pairs with an empty normalized reference; now the
-b040aa1 rule -- a one-utterance change on each LibriTTS set). XTTS reports `wer_whisper_normalized`
-as its headline; its `self`-prompt WER-n for reference: LJSpeech 2.44, test-clean 2.59, test-other
-2.95, VCTK 1.42 (results under `/data/user_data/xoy/xtts_accent_eval/.../self/`).
+| prompt | dataset | n | WER% raw | WER% norm | UTMOSv2 | DNSMOS ovr | Spk cos | Emo cos | Acc cos | RTF | <0.5s |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| self | ljspeech | 150/150 | 9.07 | 2.74 | 3.949 | 3.406 | 0.893 | 0.973 | 0.853 | 0.53 | 1 |
+| self | libritts_test_clean | 4829/4830 | 12.48 | 3.63 | 3.483 | 3.247 | 0.842 | 0.939 | 0.893 | 0.75 | 49 |
+| self | libritts_test_other | 5104/5106 | 13.93 | 4.01 | 3.320 | 3.159 | 0.813 | 0.924 | 0.862 | 0.60 | 90 |
+| self | esd | 1498/1500 | 15.49 | 3.46 | 3.430 | 3.168 | 0.810 | 0.842 | 0.853 | 0.72 | 5 |
+| self | vctk | 2596/2596 | 4.82 | 2.26 | 3.481 | 3.169 | 0.829 | 0.943 | 0.877 | 0.79 | 4 |
+| cross | ljspeech | 150/150 | 8.61 | 1.94 | 3.946 | 3.422 | 0.787 | 0.968 | 0.818 | 0.80 | 0 |
+| cross | libritts_test_clean | 4830/4830 | 11.28 | 2.40 | 3.538 | 3.271 | 0.608 | 0.918 | 0.823 | 0.54 | 17 |
+| cross | libritts_test_other | 5106/5106 | 13.14 | 2.97 | 3.399 | 3.189 | 0.544 | 0.900 | 0.756 | 0.71 | 31 |
+| cross | esd | 1500/1500 | 14.65 | 2.27 | 3.524 | 3.193 | 0.580 | 0.764 | 0.790 | 0.63 | 0 |
+| cross | vctk | 2596/2596 | 4.49 | 1.64 | 3.603 | 3.189 | 0.632 | 0.914 | 0.791 | 0.52 | 1 |
 
 Ground-truth WER floors (Whisper on the raw recordings, corpus-level, raw / normalized; from
 articulatory-tts's `gt_transcripts_*.json` as recomputed by the EmoSphere++ session, VCTK raw from
 articulatory-tts CLAUDE.md): LJSpeech 6.97 / 1.60, LibriTTS test-clean 10.60 / 2.27, test-other
-13.51 / 4.11, ESD 15.05 / 2.78, VCTK 3.70 / (pending articulatory-tts's GH #32 rescore). Read the WER
-columns against these: CosyVoice3 `cross` normalized WER is at or below the floor on every set
-(LJSpeech 1.94 vs 1.60, test-clean 2.40 vs 2.27, test-other 2.97 vs 4.11, ESD 2.27 vs 2.78), i.e.
-its intelligibility is indistinguishable from the recordings themselves at this metric's resolution.
+13.51 / 4.11, ESD 15.05 / 2.78, VCTK 3.70 / (pending articulatory-tts's GH #32 rescore).
 
-Reading notes so far:
-- Raw WER is dominated by punctuation/casing formatting, not recognition: normalized WER is
-  1.6-3.0% on every set (ESD 14.65% raw -> 2.27% normalized). Report the normalized column as
-  the intelligibility number; keep raw only for comparability with older tables.
-- `self` vs `cross` speaker cosine (0.893 vs 0.787 LJSpeech; 0.829 vs 0.632 VCTK) shows how much
-  the paired protocol flatters an in-context cloner; `cross` is the honest zero-shot number.
-- Degenerate early-EOS outputs (<0.5 s): 17/4830 test-clean, 31/5106 test-other, 4/2596 VCTK
-  (`n_pred_under_0p5s`); they are scored as-is. Five `self`-mode utterances (<=4-word texts) crash
-  the vocoder on every seed and are reported as synthesis failures (see CHANGELOG).
-- Per-accent (VCTK) and per-emotion (ESD) breakdowns with the side-metric cosines live in the
-  results JSONs (`by_accent`, `by_emotion`, `by_speaker`) and print via `eval/summarize_results.py`;
-  final tables go below once the per-utterance side-metric jobs finish.
+WER implementation parity (2026-09-08): the EmoSphere++ and XTTS eval sessions each confirmed
+point-by-point that their scorers match ours (Whisper large-v3 fp32 greedy one-utterance-per-call, raw
+lowercased punctuation-kept `wer`, Whisper-normalizer `wer_whisper_normalized` with
+empty-normalized-reference pairs skipped, same reference texts/splits, both keys reported raw-first);
+XTTS aligned the one difference it had (it used to keep pairs with an empty normalized reference; a
+one-utterance change on each LibriTTS set) and reports `wer_whisper_normalized` as its headline;
+articulatory-tts's `eval_full_testset.py` matches by code inspection (its `wer` is the normalized
+variant since GH #32, commit b040aa1).
+
+Missing utterances: 5 `self`-mode utterances with <=4-word texts ("please excuse me." x2, "It is also
+skin.", "A lonelier place!", one test-clean) crash HiFT on every seed (the LLM, shown the tokens of the
+very sentence it must say, emits nothing) and are recorded as synthesis failures (`failed_uids` in the
+JSONs; scored with `ALLOW_MISSING=5`). All `cross` sets are complete.
+
+**Per-emotion (ESD, 300 utts each; emotion cosine vs. the ESD label; "pred/GT labelled" = fraction
+emotion2vec+ assigns the target emotion to the prediction / the ground truth):**
+
+| prompt | emotion | WER% raw | WER% norm | UTMOSv2 | DNSMOS ovr | Spk cos | Emo cos | Acc cos | pred/GT dur | pred labelled | GT labelled |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| self | Angry | 15.43 | 3.78 | 3.440 | 3.195 | 0.811 | 0.943 | 0.867 | 1.08 | 0.92 | 0.98 |
+| self | Happy | 14.29 | 3.15 | 3.477 | 3.154 | 0.793 | 0.848 | 0.850 | 1.09 | 0.71 | 0.93 |
+| self | Neutral | 15.01 | 3.46 | 3.512 | 3.165 | 0.834 | 0.929 | 0.859 | 1.15 | 0.95 | 1.00 |
+| self | Sad | 15.54 | 2.69 | 3.388 | 3.194 | 0.844 | 0.847 | 0.836 | 1.08 | 0.80 | 0.99 |
+| self | Surprise | 17.18 | 4.20 | 3.331 | 3.132 | 0.764 | 0.644 | 0.853 | 1.10 | 0.46 | 0.95 |
+| cross | Angry | 14.77 | 2.73 | 3.545 | 3.209 | 0.578 | 0.891 | 0.803 | 1.05 | 0.83 | 0.98 |
+| cross | Happy | 13.89 | 1.92 | 3.551 | 3.186 | 0.553 | 0.768 | 0.786 | 1.06 | 0.60 | 0.93 |
+| cross | Neutral | 15.01 | 2.28 | 3.596 | 3.204 | 0.623 | 0.912 | 0.813 | 1.09 | 0.96 | 1.00 |
+| cross | Sad | 14.78 | 1.96 | 3.499 | 3.212 | 0.622 | 0.786 | 0.751 | 1.06 | 0.64 | 0.99 |
+| cross | Surprise | 14.79 | 2.46 | 3.429 | 3.152 | 0.524 | 0.464 | 0.798 | 1.09 | 0.19 | 0.95 |
+
+**Per-accent (VCTK, one held-out speaker per accent; accent cosine = CommonAccent embedding; "pred/GT
+labelled" = fraction the 16-way CommonAccent classifier assigns the mapped label -- only informative
+for American, the one accent it recognises in the ground truth):**
+
+| prompt | accent (speaker) | n | WER% raw | WER% norm | UTMOSv2 | DNSMOS ovr | Spk cos | Emo cos | Acc cos | pred/GT dur | pred labelled | GT labelled |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| self | American (p297) | 417 | 4.96 | 2.54 | 3.627 | 3.123 | 0.801 | 0.933 | 0.893 | 0.95 | 0.98 | 0.97 |
+| self | Canadian (p317) | 423 | 3.44 | 1.54 | 3.579 | 3.136 | 0.861 | 0.944 | 0.926 | 1.04 | 0.01 | 0.02 |
+| self | English (p270) | 462 | 6.23 | 2.55 | 3.326 | 3.219 | 0.826 | 0.936 | 0.843 | 1.04 | 0.22 | 0.23 |
+| self | Irish (p288) | 412 | 2.42 | 0.96 | 3.519 | 3.180 | 0.840 | 0.960 | 0.872 | 1.00 | 0.03 | 0.04 |
+| self | NorthernIrish (p304) | 423 | 4.21 | 2.32 | 3.712 | 3.163 | 0.828 | 0.954 | 0.883 | 0.95 | 0.05 | 0.17 |
+| self | Scottish (p281) | 459 | 7.32 | 3.54 | 3.166 | 3.185 | 0.821 | 0.933 | 0.849 | 1.04 | 0.01 | 0.04 |
+| cross | American (p297) | 417 | 3.90 | 1.82 | 3.765 | 3.147 | 0.568 | 0.896 | 0.843 | 0.93 | 0.96 | 0.97 |
+| cross | Canadian (p317) | 423 | 4.02 | 1.79 | 3.681 | 3.140 | 0.709 | 0.916 | 0.882 | 0.97 | 0.01 | 0.02 |
+| cross | English (p270) | 462 | 5.74 | 1.68 | 3.431 | 3.217 | 0.646 | 0.913 | 0.755 | 1.02 | 0.23 | 0.23 |
+| cross | Irish (p288) | 412 | 3.37 | 0.99 | 3.632 | 3.218 | 0.639 | 0.936 | 0.757 | 0.96 | 0.01 | 0.04 |
+| cross | NorthernIrish (p304) | 423 | 3.77 | 1.55 | 3.825 | 3.182 | 0.601 | 0.931 | 0.778 | 0.94 | 0.03 | 0.17 |
+| cross | Scottish (p281) | 459 | 5.87 | 1.98 | 3.325 | 3.222 | 0.627 | 0.895 | 0.741 | 1.02 | 0.00 | 0.04 |
+
+### Findings
+
+- **Intelligibility is at the recording floor in the standard zero-shot protocol.** `cross`
+  normalized WER is 1.64-2.97% and at or below the ground-truth floor on every set with a known floor
+  (LJSpeech 1.94 vs 1.60, test-clean 2.40 vs 2.27, test-other 2.97 vs 4.11, ESD 2.27 vs 2.78). Raw
+  WER (8.6-14.7%) is dominated by punctuation/casing differences between Whisper's output and the
+  transcripts, not recognition errors -- compare raw only against raw tables.
+- **The paired `self` protocol hurts an in-context LLM instead of flattering its WER.** With the target's
+  own tokens as the in-context prompt, CosyVoice3 tends to stop early: 49/4829 test-clean and 90/5104
+  test-other outputs are under 0.5 s (vs 17 and 31 in `cross`), which is what lifts `self` normalized
+  WER to 3.63% / 4.01% / 3.46% (ESD) against 2.40 / 2.97 / 2.27 in `cross`; five short texts fail
+  outright. Speaker/emotion/accent cosines are the opposite: `self` (0.81-0.89 speaker) is inflated by
+  seeing the target utterance itself; `cross` (0.54-0.79) is the honest zero-shot number. Use
+  `cross` as CosyVoice3's headline row; use `self` only to sit next to the sibling baselines' paired
+  numbers (XTTS `self` WER-n for reference: LJSpeech 2.44, test-clean 2.59, test-other 2.95, VCTK 1.42).
+- **Speaker similarity vs. corpus:** `cross` ECAPA cosine 0.79 (LJSpeech, single speaker, prompt =
+  another sentence of the same voice) > 0.63 VCTK > 0.61 test-clean > 0.58 ESD > 0.54 test-other.
+  The LibriTTS/ESD values reflect short prompts (ESD ~3 s) and noisy/expressive prompts, not just the
+  model; read them against the codec ceilings articulatory-tts reports (speaker 0.60-0.83 by corpus).
+- **Emotion transfer is uneven (ESD, `cross`):** emotion cosine Neutral 0.912, Angry 0.891, Sad 0.786,
+  Happy 0.768, Surprise 0.464; emotion2vec labels the output as the prompt's emotion 96 / 83 / 64 / 60 /
+  19% of the time while it labels the ground truth correctly 93-100% of the time. Surprise is largely
+  lost even with a same-speaker, same-emotion prompt; `self` (prompt = the target itself) only lifts it
+  to 0.644 / 46%. Per-speaker emotion cosine is flat (0.72-0.81 `cross`).
+- **Accent (VCTK, `cross`):** accent cosine Canadian 0.882 > American 0.843 > NorthernIrish 0.778 >
+  Irish 0.757 > English 0.755 > Scottish 0.741; Scottish and English also have the highest WER
+  (raw 5.9 / 5.7%, normalized 2.0 / 1.7%) and lowest UTMOSv2 (3.33 / 3.43). The CommonAccent
+  classifier only recognises the American speaker in the ground truth (97%), so label agreement is
+  informative there alone (96% of `cross` outputs labelled `us`); for the other five accents the
+  embedding cosine is the usable signal. Speaker and accent are confounded (one speaker per accent).
+- **Quality:** UTMOSv2 3.32-3.95 (LJSpeech best, test-other worst), DNSMOS ovr 3.16-3.42; both
+  essentially identical between `self` and `cross`. RTF 0.5-0.8 in fp32 without TRT/vLLM.
 
 - 2026-09-08: env built, checkpoint on /data, smoke test (3 utts x 5 sets x 2 modes, full scoring
   chain) passed. Full matrix in flight: 48 synthesis shards (jobs 10354132-10354179) with 10

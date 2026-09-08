@@ -97,4 +97,10 @@ All notable changes to this clone. Upstream CosyVoice code is untouched; entries
 - Side per-utt jobs: cross/vctk 10358134 COMPLETED (7m46s); self/vctk 10358133 preempted twice and
   finished on the third run in 9 s thanks to the resumable per-utterance JSON (n=2595: one pair under
   the 0.1 s floor).
+- 12:30 EDT: the last two `self` rescorers (10357990 test-clean 4829/4830, 10357991 test-other
+  5104/5106; 67 min each on a Blackwell node) and the `self`/esd side-metric job (10358136) finished --
+  all 10 sets scored, per-emotion/per-accent/per-speaker breakdowns with side-metric cosines in every
+  results JSON. `reaggregate_wer.py` also back-fills the degenerate-output counters; final pass run over
+  all sets. Final tables + findings written to CLAUDE.md; the complete `summarize_results.py` output is
+  committed as `eval/results/summary_Fun-CosyVoice3-0.5B-2512.md`.
 
