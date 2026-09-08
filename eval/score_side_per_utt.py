@@ -178,7 +178,10 @@ def main():
         out = {}
         for g, recs in sorted(groups.items()):
             entry = {"n": len(recs), metric_key: summarize([r[metric_key] for r in recs])}
-            target = target_map.get(recs[0][group_field])
+            # Label agreement is only meaningful for a group with ONE target label (an emotion group, an
+            # accent group, or a VCTK speaker = one accent); an ESD speaker spans all five emotions.
+            homogeneous = len({r[group_field] for r in recs}) == 1
+            target = target_map.get(recs[0][group_field]) if homogeneous else None
             labelled = [r for r in recs if r.get("pred_label") is not None]
             if target and labelled:
                 entry[label_key] = {

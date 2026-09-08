@@ -79,4 +79,14 @@ All notable changes to this clone. Upstream CosyVoice code is untouched; entries
   (`nzxyin/CosyVoice`). Upstream's `.gitignore` rule `**/*build*` silently ignores
   `eval/build_env.sbatch` and `eval/pip-build-constraints.txt`; both are force-added (`git add -f`),
   so re-add them the same way after editing.
+- Opened PR https://github.com/nzxyin/CosyVoice/pull/2 (fork, `eval/cosyvoice3-baseline` -> `main`);
+  final result tables will be added to `CLAUDE.md` on the same branch once the remaining scoring jobs
+  finish. Whisper in the scorer runs exactly as the reference does (fp32, one utterance per
+  `generate()`, greedy, no `torch.compile`/batching) -- kept for comparability; that is why the
+  LibriTTS test-other scorer takes ~4 h.
+- `score_side_per_utt.py`: label agreement is now only computed for groups with a single target label
+  (emotion/accent groups, VCTK speakers); ESD per-speaker groups span all five emotions and had been
+  getting a meaningless 0.20 "GT->target" figure. cross/esd refolded. First per-emotion result
+  (cross/esd): emotion cosine Neutral 0.912, Angry 0.891, Sad 0.786, Happy 0.768, Surprise 0.464;
+  emotion2vec labels the output as the target emotion 96/83/64/60/19% of the time (GT: 93-100%).
 
