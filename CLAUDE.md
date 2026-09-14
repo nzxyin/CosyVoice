@@ -26,8 +26,10 @@ upstream's `.gitignore` has `**/*build*`, which hides `eval/build_env.sbatch` an
 - Eval outputs: `/data/user_data/xoy/cosyvoice3_eval/Fun-CosyVoice3-0.5B-2512/<self|cross>/`
   (`<dataset>/wavs`, manifests, `wav_pairs_16k`, `eval_<dataset>.json`).
 - Scoring reuses the reference repo's venvs (`eval-articulatory-tts`, `eval-emotion`,
-  `eval-accent` under `/data/user_data/xoy/venvs/`) and its `score_side_metric.py` /
-  `merge_eval_results.py` unchanged.
+  `eval-genaid` under `/data/user_data/xoy/venvs/`) and its `score_side_metric.py` /
+  `merge_eval_results.py` unchanged. Accent cosine = GenAID (https://github.com/jzmzhong/GenAID,
+  speaker-adversarial XLSR-53 accent ID, 64-dim embedding) since 2026-09-14; CommonAccent before
+  that, kept in every JSON as `accent_cosine_commonaccent` (not comparable).
 - torch 2.3.1 has no Blackwell kernels: GPU jobs exclude `preempt`'s RTX PRO 6000 nodes.
 
 ## Current direction (2026-09-08)
@@ -45,22 +47,26 @@ rescore publishes the normalized VCTK floor.
 WER raw = lowercased, punctuation kept (the pre-GH#32 articulatory-tts convention, also the XTTS
 port's `wer`); WER norm = Whisper EnglishTextNormalizer on both sides, empty normalized references
 skipped (= articulatory-tts's `wer` since its GH #32 fix, 2026-09-08). Corpus-level. n = scored /
-synthesizable utterances. Spk / Emo / Acc = ECAPA / emotion2vec+ large / CommonAccent embedding cosine,
-prediction vs. ground truth (mean; ci95 in the JSONs). RTF = generation wall time / audio seconds,
+synthesizable utterances. Spk / Emo / Acc = ECAPA / emotion2vec+ large / GenAID embedding cosine,
+prediction vs. ground truth (mean; ci95 in the JSONs). **Acc cos = GenAID since 2026-09-14** (rescored on the
+kept wav pairs, job 10441103); the CommonAccent values these tables showed before are kept in each JSON as
+`accent_cosine_commonaccent` (self 0.853/0.893/0.862/0.853/0.877, cross 0.818/0.823/0.756/0.790/0.791 in
+row order) and are not comparable. GenAID cosines sit in a compressed 0.85-0.99 band for every system
+(its 64-dim post-GELU embedding shares a large common component), so read differences, not absolute values. RTF = generation wall time / audio seconds,
 fp32 non-streaming on L40S/A6000/A100 (`preempt`). `<0.5s` = degenerate early-EOS outputs, scored as-is.
 
 | prompt | dataset | n | WER% raw | WER% norm | UTMOSv2 | DNSMOS ovr | Spk cos | Emo cos | Acc cos | RTF | <0.5s |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| self | ljspeech | 150/150 | 9.07 | 2.74 | 3.949 | 3.406 | 0.893 | 0.973 | 0.853 | 0.53 | 1 |
-| self | libritts_test_clean | 4829/4830 | 12.48 | 3.63 | 3.483 | 3.247 | 0.842 | 0.939 | 0.893 | 0.75 | 49 |
-| self | libritts_test_other | 5104/5106 | 13.93 | 4.01 | 3.320 | 3.159 | 0.813 | 0.924 | 0.862 | 0.60 | 90 |
-| self | esd | 1498/1500 | 15.49 | 3.46 | 3.430 | 3.168 | 0.810 | 0.842 | 0.853 | 0.72 | 5 |
-| self | vctk | 2596/2596 | 4.82 | 2.26 | 3.481 | 3.169 | 0.829 | 0.943 | 0.877 | 0.79 | 4 |
-| cross | ljspeech | 150/150 | 8.61 | 1.94 | 3.946 | 3.422 | 0.787 | 0.968 | 0.818 | 0.80 | 0 |
-| cross | libritts_test_clean | 4830/4830 | 11.28 | 2.40 | 3.538 | 3.271 | 0.608 | 0.918 | 0.823 | 0.54 | 17 |
-| cross | libritts_test_other | 5106/5106 | 13.14 | 2.97 | 3.399 | 3.189 | 0.544 | 0.900 | 0.756 | 0.71 | 31 |
-| cross | esd | 1500/1500 | 14.65 | 2.27 | 3.524 | 3.193 | 0.580 | 0.764 | 0.790 | 0.63 | 0 |
-| cross | vctk | 2596/2596 | 4.49 | 1.64 | 3.603 | 3.189 | 0.632 | 0.914 | 0.791 | 0.52 | 1 |
+| self | ljspeech | 150/150 | 9.07 | 2.74 | 3.949 | 3.406 | 0.893 | 0.973 | 0.987 | 0.53 | 1 |
+| self | libritts_test_clean | 4829/4830 | 12.48 | 3.63 | 3.483 | 3.247 | 0.842 | 0.939 | 0.985 | 0.75 | 49 |
+| self | libritts_test_other | 5104/5106 | 13.93 | 4.01 | 3.320 | 3.159 | 0.813 | 0.924 | 0.973 | 0.60 | 90 |
+| self | esd | 1498/1500 | 15.49 | 3.46 | 3.430 | 3.168 | 0.810 | 0.842 | 0.982 | 0.72 | 5 |
+| self | vctk | 2596/2596 | 4.82 | 2.26 | 3.481 | 3.169 | 0.829 | 0.943 | 0.965 | 0.79 | 4 |
+| cross | ljspeech | 150/150 | 8.61 | 1.94 | 3.946 | 3.422 | 0.787 | 0.968 | 0.987 | 0.80 | 0 |
+| cross | libritts_test_clean | 4830/4830 | 11.28 | 2.40 | 3.538 | 3.271 | 0.608 | 0.918 | 0.973 | 0.54 | 17 |
+| cross | libritts_test_other | 5106/5106 | 13.14 | 2.97 | 3.399 | 3.189 | 0.544 | 0.900 | 0.946 | 0.71 | 31 |
+| cross | esd | 1500/1500 | 14.65 | 2.27 | 3.524 | 3.193 | 0.580 | 0.764 | 0.971 | 0.63 | 0 |
+| cross | vctk | 2596/2596 | 4.49 | 1.64 | 3.603 | 3.189 | 0.632 | 0.914 | 0.921 | 0.52 | 1 |
 
 Ground-truth WER floors (Whisper on the raw recordings, corpus-level, raw / normalized; from
 articulatory-tts's `gt_transcripts_*.json` as recomputed by the EmoSphere++ session, VCTK raw from
@@ -86,35 +92,37 @@ emotion2vec+ assigns the target emotion to the prediction / the ground truth):**
 
 | prompt | emotion | WER% raw | WER% norm | UTMOSv2 | DNSMOS ovr | Spk cos | Emo cos | Acc cos | pred/GT dur | pred labelled | GT labelled |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| self | Angry | 15.43 | 3.78 | 3.440 | 3.195 | 0.811 | 0.943 | 0.867 | 1.08 | 0.92 | 0.98 |
-| self | Happy | 14.29 | 3.15 | 3.477 | 3.154 | 0.793 | 0.848 | 0.850 | 1.09 | 0.71 | 0.93 |
-| self | Neutral | 15.01 | 3.46 | 3.512 | 3.165 | 0.834 | 0.929 | 0.859 | 1.15 | 0.95 | 1.00 |
-| self | Sad | 15.54 | 2.69 | 3.388 | 3.194 | 0.844 | 0.847 | 0.836 | 1.08 | 0.80 | 0.99 |
-| self | Surprise | 17.18 | 4.20 | 3.331 | 3.132 | 0.764 | 0.644 | 0.853 | 1.10 | 0.46 | 0.95 |
-| cross | Angry | 14.77 | 2.73 | 3.545 | 3.209 | 0.578 | 0.891 | 0.803 | 1.05 | 0.83 | 0.98 |
-| cross | Happy | 13.89 | 1.92 | 3.551 | 3.186 | 0.553 | 0.768 | 0.786 | 1.06 | 0.60 | 0.93 |
-| cross | Neutral | 15.01 | 2.28 | 3.596 | 3.204 | 0.623 | 0.912 | 0.813 | 1.09 | 0.96 | 1.00 |
-| cross | Sad | 14.78 | 1.96 | 3.499 | 3.212 | 0.622 | 0.786 | 0.751 | 1.06 | 0.64 | 0.99 |
-| cross | Surprise | 14.79 | 2.46 | 3.429 | 3.152 | 0.524 | 0.464 | 0.798 | 1.09 | 0.19 | 0.95 |
+| self | Angry | 15.43 | 3.78 | 3.440 | 3.195 | 0.811 | 0.943 | 0.982 | 1.08 | 0.92 | 0.98 |
+| self | Happy | 14.29 | 3.15 | 3.477 | 3.154 | 0.793 | 0.848 | 0.984 | 1.09 | 0.71 | 0.93 |
+| self | Neutral | 15.01 | 3.46 | 3.512 | 3.165 | 0.834 | 0.929 | 0.981 | 1.15 | 0.95 | 1.00 |
+| self | Sad | 15.54 | 2.69 | 3.388 | 3.194 | 0.844 | 0.847 | 0.980 | 1.08 | 0.80 | 0.99 |
+| self | Surprise | 17.18 | 4.20 | 3.331 | 3.132 | 0.764 | 0.644 | 0.982 | 1.10 | 0.46 | 0.95 |
+| cross | Angry | 14.77 | 2.73 | 3.545 | 3.209 | 0.578 | 0.891 | 0.972 | 1.05 | 0.83 | 0.98 |
+| cross | Happy | 13.89 | 1.92 | 3.551 | 3.186 | 0.553 | 0.768 | 0.974 | 1.06 | 0.60 | 0.93 |
+| cross | Neutral | 15.01 | 2.28 | 3.596 | 3.204 | 0.623 | 0.912 | 0.973 | 1.09 | 0.96 | 1.00 |
+| cross | Sad | 14.78 | 1.96 | 3.499 | 3.212 | 0.622 | 0.786 | 0.963 | 1.06 | 0.64 | 0.99 |
+| cross | Surprise | 14.79 | 2.46 | 3.429 | 3.152 | 0.524 | 0.464 | 0.973 | 1.09 | 0.19 | 0.95 |
 
-**Per-accent (VCTK, one held-out speaker per accent; accent cosine = CommonAccent embedding; "pred/GT
-labelled" = fraction the 16-way CommonAccent classifier assigns the mapped label -- only informative
-for American, the one accent it recognises in the ground truth):**
+**Per-accent (VCTK, one held-out speaker per accent; accent cosine = GenAID embedding; "pred/GT
+labelled" = fraction GenAID's 13-way classifier assigns the mapped label (American->us, Canadian->canadian,
+English->english, Irish and NorthernIrish->irish, Scottish->scottish). GenAID recognises the American,
+English and Scottish ground truth (95/76/44%) but not the Canadian or Northern Irish speaker (3/5%), so
+the label view is informative for the first three accents only):**
 
 | prompt | accent (speaker) | n | WER% raw | WER% norm | UTMOSv2 | DNSMOS ovr | Spk cos | Emo cos | Acc cos | pred/GT dur | pred labelled | GT labelled |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| self | American (p297) | 417 | 4.96 | 2.54 | 3.627 | 3.123 | 0.801 | 0.933 | 0.893 | 0.95 | 0.98 | 0.97 |
-| self | Canadian (p317) | 423 | 3.44 | 1.54 | 3.579 | 3.136 | 0.861 | 0.944 | 0.926 | 1.04 | 0.01 | 0.02 |
-| self | English (p270) | 462 | 6.23 | 2.55 | 3.326 | 3.219 | 0.826 | 0.936 | 0.843 | 1.04 | 0.22 | 0.23 |
-| self | Irish (p288) | 412 | 2.42 | 0.96 | 3.519 | 3.180 | 0.840 | 0.960 | 0.872 | 1.00 | 0.03 | 0.04 |
-| self | NorthernIrish (p304) | 423 | 4.21 | 2.32 | 3.712 | 3.163 | 0.828 | 0.954 | 0.883 | 0.95 | 0.05 | 0.17 |
-| self | Scottish (p281) | 459 | 7.32 | 3.54 | 3.166 | 3.185 | 0.821 | 0.933 | 0.849 | 1.04 | 0.01 | 0.04 |
-| cross | American (p297) | 417 | 3.90 | 1.82 | 3.765 | 3.147 | 0.568 | 0.896 | 0.843 | 0.93 | 0.96 | 0.97 |
-| cross | Canadian (p317) | 423 | 4.02 | 1.79 | 3.681 | 3.140 | 0.709 | 0.916 | 0.882 | 0.97 | 0.01 | 0.02 |
-| cross | English (p270) | 462 | 5.74 | 1.68 | 3.431 | 3.217 | 0.646 | 0.913 | 0.755 | 1.02 | 0.23 | 0.23 |
-| cross | Irish (p288) | 412 | 3.37 | 0.99 | 3.632 | 3.218 | 0.639 | 0.936 | 0.757 | 0.96 | 0.01 | 0.04 |
-| cross | NorthernIrish (p304) | 423 | 3.77 | 1.55 | 3.825 | 3.182 | 0.601 | 0.931 | 0.778 | 0.94 | 0.03 | 0.17 |
-| cross | Scottish (p281) | 459 | 5.87 | 1.98 | 3.325 | 3.222 | 0.627 | 0.895 | 0.741 | 1.02 | 0.00 | 0.04 |
+| self | American (p297) | 417 | 4.96 | 2.54 | 3.627 | 3.123 | 0.801 | 0.933 | 0.978 | 0.95 | 0.94 | 0.95 |
+| self | Canadian (p317) | 423 | 3.44 | 1.54 | 3.579 | 3.136 | 0.861 | 0.944 | 0.986 | 1.04 | 0.04 | 0.03 |
+| self | English (p270) | 462 | 6.23 | 2.55 | 3.326 | 3.219 | 0.826 | 0.936 | 0.967 | 1.04 | 0.65 | 0.76 |
+| self | Irish (p288) | 412 | 2.42 | 0.96 | 3.519 | 3.180 | 0.840 | 0.960 | 0.968 | 1.00 | 0.14 | 0.22 |
+| self | NorthernIrish (p304) | 423 | 4.21 | 2.32 | 3.712 | 3.163 | 0.828 | 0.954 | 0.960 | 0.95 | 0.02 | 0.05 |
+| self | Scottish (p281) | 459 | 7.32 | 3.54 | 3.166 | 3.185 | 0.821 | 0.933 | 0.931 | 1.04 | 0.24 | 0.45 |
+| cross | American (p297) | 417 | 3.90 | 1.82 | 3.765 | 3.147 | 0.568 | 0.896 | 0.970 | 0.93 | 0.96 | 0.95 |
+| cross | Canadian (p317) | 423 | 4.02 | 1.79 | 3.681 | 3.140 | 0.709 | 0.916 | 0.978 | 0.97 | 0.03 | 0.03 |
+| cross | English (p270) | 462 | 5.74 | 1.68 | 3.431 | 3.217 | 0.646 | 0.913 | 0.922 | 1.02 | 0.52 | 0.76 |
+| cross | Irish (p288) | 412 | 3.37 | 0.99 | 3.632 | 3.218 | 0.639 | 0.936 | 0.910 | 0.96 | 0.05 | 0.22 |
+| cross | NorthernIrish (p304) | 423 | 3.77 | 1.55 | 3.825 | 3.182 | 0.601 | 0.931 | 0.902 | 0.94 | 0.01 | 0.05 |
+| cross | Scottish (p281) | 459 | 5.87 | 1.98 | 3.325 | 3.222 | 0.627 | 0.895 | 0.853 | 1.02 | 0.07 | 0.44 |
 
 ### Findings
 
@@ -140,12 +148,17 @@ for American, the one accent it recognises in the ground truth):**
   19% of the time while it labels the ground truth correctly 93-100% of the time. Surprise is largely
   lost even with a same-speaker, same-emotion prompt; `self` (prompt = the target itself) only lifts it
   to 0.644 / 46%. Per-speaker emotion cosine is flat (0.72-0.81 `cross`).
-- **Accent (VCTK, `cross`):** accent cosine Canadian 0.882 > American 0.843 > NorthernIrish 0.778 >
-  Irish 0.757 > English 0.755 > Scottish 0.741; Scottish and English also have the highest WER
-  (raw 5.9 / 5.7%, normalized 2.0 / 1.7%) and lowest UTMOSv2 (3.33 / 3.43). The CommonAccent
-  classifier only recognises the American speaker in the ground truth (97%), so label agreement is
-  informative there alone (96% of `cross` outputs labelled `us`); for the other five accents the
-  embedding cosine is the usable signal. Speaker and accent are confounded (one speaker per accent).
+- **Accent (VCTK, `cross`, GenAID):** accent cosine Canadian 0.978 > American 0.970 > English 0.922 >
+  Irish 0.910 > NorthernIrish 0.902 > Scottish 0.853 -- the same ordering CommonAccent gave (Canadian >
+  American > NorthernIrish ~ Irish ~ English > Scottish), with the North-American speakers near the
+  ceiling and Scottish clearly last; Scottish and English also have the highest WER (raw 5.9 / 5.7%,
+  normalized 2.0 / 1.7%) and lowest UTMOSv2 (3.33 / 3.43). `self` prompting lifts every accent (0.931-0.986),
+  most for the British/Irish speakers (+0.05-0.08) and least for the North-American ones (+0.01). GenAID's
+  labels: the `cross` output is labelled `us` 96% of the time for the American speaker (GT 95%), `english`
+  52% for the English one (GT 76%), `scottish` only 7% for the Scottish one (GT 44%) -- i.e. under
+  cross-utterance prompting the Scottish and Irish accents are partly lost even where the classifier does
+  recognise the recordings; with the target as prompt (`self`) the rates rise to 65% / 24%. Speaker and
+  accent are confounded (one speaker per accent).
 - **Quality:** UTMOSv2 3.32-3.95 (LJSpeech best, test-other worst), DNSMOS ovr 3.16-3.42; both
   essentially identical between `self` and `cross`. RTF 0.5-0.8 in fp32 without TRT/vLLM.
 

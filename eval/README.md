@@ -20,7 +20,7 @@ punctuation kept -- articulatory-tts's convention before its GH #32 fix and the 
 `wer_whisper_normalized` (both sides through Whisper's EnglishTextNormalizer, empty normalized
 references skipped -- exactly articulatory-tts's `wer` since GH #32, 2026-09-08),
 UTMOSv2, DNSMOS (p808/sig/bak/ovr), ECAPA-TDNN speaker cosine (prediction vs. ground truth),
-emotion2vec+ large emotion cosine and CommonAccent accent cosine (prediction vs. ground truth, both
+emotion2vec+ large emotion cosine and GenAID accent cosine (prediction vs. ground truth, both
 scored by the reference repo's own `score_side_metric.py` and merged with its
 `merge_eval_results.py`). Extras not in the reference: `wer_whisper_normalized` (Whisper
 normalizer on both sides; do not compare against articulatory-tts JSONs), `rtf`, durations.
@@ -45,7 +45,7 @@ for pip's isolated build environments because `openai-whisper==20231117`'s sdist
 The pinned `torch==2.3.1+cu121` has no kernels for Blackwell GPUs, so every GPU job here carries an
 `--exclude=` list of `preempt`'s RTX PRO 6000 nodes (regenerate with the command in the sbatch
 comment). Scoring runs in the reference repo's own venvs
-(`/data/user_data/xoy/venvs/eval-articulatory-tts`, `eval-emotion`, `eval-accent`), which are not
+(`/data/user_data/xoy/venvs/eval-articulatory-tts`, `eval-emotion`, `eval-genaid`), which are not
 affected.
 
 ## Running inference (standalone)
@@ -75,7 +75,7 @@ yielded separately. See `example.py` for cross-lingual / instruct modes.
   -- the SLURM wrappers (`preempt`, `--requeue`; both stages resume).
 - `smoke_test.sbatch` -- 3 utterances per test set and prompt mode through the whole chain.
 - `score_side_per_utt.py` / `run_side_per_utt.sbatch <dataset> [prompt_mode] [metrics]` -- per-utterance
-  emotion (emotion2vec+ large, eval-emotion venv) and accent (CommonAccent, eval-accent venv) cosine
+  emotion (emotion2vec+ large, eval-emotion venv) and accent (GenAID, eval-genaid venv) cosine
   with the same models/call paths as the reference's `score_side_metric.py`, folded into the results
   JSON's `by_emotion` / `by_accent` / `by_speaker` groups together with the classifiers' own label
   agreement (mirrors `/home/xoy/TTS/eval/score_accent_per_utt.py` and

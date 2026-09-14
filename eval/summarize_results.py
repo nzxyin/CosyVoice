@@ -41,7 +41,7 @@ def main():
     for mode in args.modes:
         for p in sorted(glob.glob(os.path.join(args.root, mode, "eval_*.json"))):
             base = os.path.basename(p)
-            if base.endswith(("_per_utt.json", "_emotion.json", "_accent.json")):
+            if base.endswith(("_per_utt.json", "_emotion.json", "_accent.json", "_accent_genaid.json", "_commonaccent.json")):
                 continue
             d = json.load(open(p))
             if args.datasets and d["dataset"] not in args.datasets:

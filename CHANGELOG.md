@@ -3,6 +3,19 @@
 All notable changes to this clone. Upstream CosyVoice code is untouched; entries here are about the
 `eval/` pipeline and the environment on Babel.
 
+## 2026-09-14
+
+- Accent similarity switched from CommonAccent to GenAID (https://github.com/jzmzhong/GenAID, GenAID_v6;
+  speaker-adversarial XLSR-53 accent ID, 64-dim embedding) -- the change lives in articulatory-tts
+  (`genaid_accent.py`, `score_side_metric.py`, new `eval-genaid` venv); here `eval/score_side_per_utt.py
+  --metric accent` embeds with the same code and records GenAID's 13-way labels, and `run_score.sbatch`,
+  `run_side_per_utt.sbatch`, `smoke_test.sbatch` use the new venv and exclude the Blackwell nodes it cannot
+  run on.
+- `eval/run_rescore_accent_genaid.sbatch` (job 10441103, 10 tasks) rescores all 10 result JSONs on their
+  kept wav pairs, keeping CommonAccent as `metrics.accent_cosine_commonaccent` (+ `*_commonaccent` keys in
+  the by_* groups; old per-utt files renamed `*_accent_per_utt_commonaccent.json`). Tracked in
+  https://github.com/nzxyin/CosyVoice/issues (GenAID rescore) and the articulatory-tts tracking issue.
+
 ## 2026-09-08
 
 - Initialized the `third_party/Matcha-TTS` submodule (was registered but not checked out).
