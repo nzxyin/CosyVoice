@@ -5,11 +5,13 @@ the same 16 kHz {uid}_pred.wav/{uid}_gt.wav pairs with the SAME model and call p
 per-utterance value, then folds group summaries into the dataset's eval_<dataset>.json
 ("by_emotion"/"by_accent"/"by_speaker" -> emotion_cosine / accent_cosine) and asserts the overall
 mean reproduces the merged side metric. It mirrors the two sibling implementations:
-  --metric accent   /home/xoy/TTS/eval/score_accent_per_utt.py: Jzuluaga/accent-id-commonaccent_xlsr-en-english
-                    via speechbrain foreign_class, encode_batch() (pooled wav2vec2-XLSR encoder output
-                    before the head), cosine per pair, 0.1 s minimum duration; plus the classifier's own
-                    16-way top label for pred and GT -> "accent_label_agreement" per group (a
-                    classification view, kept separate from the cosine metric). Run in the eval-accent venv.
+  --metric accent   /home/xoy/TTS/eval/score_accent_per_utt.py: GenAID (jzmzhong/GenAID, the authors'
+                    GenAID_v6 checkpoint via /home/xoy/articulatory-tts/genaid_accent.py -- 64-dim preout_mlp
+                    embedding after statistics pooling over the fine-tuned XLSR-53 frames), cosine per pair,
+                    0.1 s minimum duration; plus GenAID's 13-way top label for pred and GT ->
+                    "accent_label_agreement" per group (a classification view, kept separate from the cosine
+                    metric). Run in the eval-genaid venv. 2026-09-14: replaced CommonAccent
+                    (Jzuluaga/accent-id-commonaccent_xlsr-en-english, speechbrain foreign_class encode_batch()).
   --metric emotion  /home/xoy/EmoSpherepp/eval/emotion_cosine_per_utt.py: iic/emotion2vec_plus_large via
                     funasr (hub=hf), extract_embedding=True utterance-level feats, cosine per pair, 0.1 s
                     minimum duration; plus emotion2vec's own 9-way top label for pred and GT ->
@@ -29,13 +31,13 @@ import soundfile as sf
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from synthesize_testset import load_items  # noqa: E402
 
+ART_REPO = "/home/xoy/articulatory-tts"  # genaid_accent.py lives with the reference side metric
+sys.path.insert(0, ART_REPO)
+
 MIN_PAIR_DURATION_SEC = 0.1  # same floor as score_side_metric.py
 
-# VCTK speaker-info accent group -> CommonAccent's 16 labels (african, australia, bermuda, canada, england,
-# hongkong, indian, ireland, malaysia, newzealand, philippines, scotland, singapore, southatlandtic, us, wales).
-VCTK_TO_COMMONACCENT = {"American": "us", "Canadian": "canada", "English": "england", "Irish": "ireland",
-                        "NorthernIrish": "ireland", "Scottish": "scotland", "Australian": "australia",
-                        "Indian": "indian", "Welsh": "wales", "SouthAfrican": "african", "NewZealand": "newzealand"}
+# VCTK speaker-info accent group -> GenAID's 13 labels, where one exists (label-agreement view only)
+from genaid_accent import VCTK_TO_GENAID  # noqa: E402
 # ESD emotion -> emotion2vec+ large's 9 labels (angry, disgusted, fearful, happy, neutral, other, sad, surprised, unknown)
 ESD_TO_EMOTION2VEC = {"Angry": "angry", "Happy": "happy", "Neutral": "neutral", "Sad": "sad", "Surprise": "surprised"}
 
@@ -64,26 +66,21 @@ def write_json_atomic(obj, path, **kw):
 
 
 def build_accent_scorer(device):
-    from speechbrain.inference.interfaces import foreign_class
-    classifier = foreign_class(
-        source="Jzuluaga/accent-id-commonaccent_xlsr-en-english",
-        pymodule_file="custom_interface.py",
-        classname="CustomEncoderWav2vec2Classifier",
-        run_opts={"device": str(device)},
-        savedir=os.path.join(os.environ["HF_HOME"], "speechbrain", "commonaccent_xlsr"),
-        overrides={"wav2vec2": {"save_path": os.path.join(os.environ["HF_HOME"], "wav2vec2_checkpoints")}},
-    )
+    import genaid_accent
+    embedder = genaid_accent.GenAIDEmbedder(device)
+    print("accent model:", genaid_accent.MODEL_TAG)
+    cache = {}
+
+    def run(path):
+        if path not in cache:
+            cache[path] = embedder.embed_and_label(path)
+        return cache[path]
 
     def embed(path):
-        waveform = classifier.load_audio(path)
-        return classifier.encode_batch(waveform.unsqueeze(0)).detach().cpu().numpy().reshape(-1)
+        return run(path)[0]
 
     def label(path):
-        out_prob, score, index, text_lab = classifier.classify_file(path)
-        lab = text_lab[0] if isinstance(text_lab, (list, tuple)) else str(text_lab)
-        if hasattr(score, "detach"):
-            score = score.detach().cpu()
-        return lab, float(np.asarray(score).reshape(-1)[0])
+        return run(path)[1], run(path)[2]
     return embed, label
 
 
@@ -130,7 +127,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     metric_key = f"{args.metric}_cosine"
     label_key = f"{args.metric}_label_agreement"
-    target_map = ESD_TO_EMOTION2VEC if args.metric == "emotion" else VCTK_TO_COMMONACCENT
+    target_map = ESD_TO_EMOTION2VEC if args.metric == "emotion" else VCTK_TO_GENAID
     group_field = "emotion" if args.metric == "emotion" else "accent_label"
 
     items = load_items(args.dataset)
@@ -206,8 +203,12 @@ def main():
             results.setdefault(out_key, {})
             for g, entry in by(field).items():
                 results[out_key].setdefault(g, {}).update(entry)
+    model_tag = ""
+    if args.metric == "accent":
+        import genaid_accent
+        model_tag = f"; {genaid_accent.MODEL_TAG}"
     results[f"{metric_key}_per_utt_source"] = (f"eval/score_side_per_utt.py --metric {args.metric} "
-                                              f"(same model/call path as articulatory-tts score_side_metric.py)")
+                                              f"(same model/call path as articulatory-tts score_side_metric.py{model_tag})")
     write_json_atomic(results, args.results_path, indent=2)
     for out_key in ("by_emotion", "by_accent"):
         if out_key in results and any(metric_key in e for e in results[out_key].values()):
