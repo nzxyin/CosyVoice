@@ -24,11 +24,25 @@ All notable changes to this clone. Upstream CosyVoice code is untouched; entries
   `accent_cosine_genaid_raw` before that merge, and redoes `eval/score_side_per_utt.py --metric accent`
   (previous raw per-utt file kept as `eval_<dataset>_accent_per_utt_genaid_raw.json`, moved aside only if
   it doesn't already carry a `center_vector` marker). Skip condition: `metrics.accent_cosine.model`
-  contains `"centroid-centered"`. Not yet run -- numbers to be filled in once it is.
+  contains `"centroid-centered"`. **Submitted and COMPLETED as SLURM array 10473704** (task 0 = self,
+  task 1 = cross); verified via `python3` that both `eval_vctk.json`s' `metrics.accent_cosine.model`
+  contains `"centroid-centered"`, and that `accent_cosine_genaid_raw` / `accent_cosine_commonaccent`
+  survived the merge untouched. Centered accent cosine: self (n=2595) 0.817 ± 0.008 95% CI (per accent:
+  American 0.912, Canadian 0.935, English 0.839, Irish 0.825, NorthernIrish 0.713, Scottish 0.686), cross
+  (n=2596) 0.611 ± 0.014 (per accent: American 0.876, Canadian 0.900, English 0.637, Irish 0.537,
+  NorthernIrish 0.393, Scottish 0.347); full CIs and the superseded raw-GenAID/CommonAccent values are in
+  CLAUDE.md's "Accent metric centering" section.
 - `eval/summarize_results.py` skips the two new sidecar files (`*_genaid_centered.json`,
   `*_accent_per_utt_genaid_raw.json`), same fix as the 2026-09-14 rescore needed for its own
   sidecars, plus a `"dataset" not in d` guard so a future sidecar naming scheme fails safe instead
-  of `KeyError`ing. `eval/README.md`'s metrics paragraph now mentions the centered cosine.
+  of `KeyError`ing. `eval/README.md`'s metrics paragraph now mentions the centered cosine and its
+  VCTK-only scope (job 10473704).
+- `eval/results/summary_Fun-CosyVoice3-0.5B-2512.md` regenerated on `babel-n9-32`. It turned out to
+  have been stale since its original 2026-09-08 commit despite the 2026-09-14 docs commit's message
+  claiming a regeneration (that commit touched CHANGELOG.md/CLAUDE.md/README.md/summarize_results.py
+  but never re-ran the script against the checked-in file); the refreshed copy now reflects both the
+  2026-09-14 GenAID switch (raw, on the 8 non-VCTK rows/breakdowns) and this session's centered VCTK
+  rescore in one pass.
 
 ## 2026-09-14
 
