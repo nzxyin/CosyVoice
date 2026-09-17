@@ -3,6 +3,14 @@
 All notable changes to this clone. Upstream CosyVoice code is untouched; entries here are about the
 `eval/` pipeline and the environment on Babel.
 
+## 2026-09-17
+
+- CLAUDE.md "Accent metric centering": provenance caveat that the two VCTK JSONs record the centering
+  vector by the removed `/home/xoy/wt-center` worktree path (`ART_REPO` override used while
+  articulatory-tts PR #54 was unmerged); the file is byte-identical to the one on articulatory-tts main
+  (tracked as nzxyin/articulatory-tts issue #57). No numbers changed. Found by the 2026-09-17 post-merge
+  audit of the accent-centering change.
+
 ## 2026-09-16
 
 - Accent similarity switched from raw GenAID cosine to the CENTERED GenAID cosine (both the predicted

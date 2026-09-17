@@ -93,6 +93,16 @@ must be labelled as such wherever they appear next to these VCTK numbers (see th
 / environment" above). The "Final results" and per-accent tables below have been updated with the
 centered VCTK numbers.
 
+**Provenance caveat (2026-09-17 audit; nzxyin/articulatory-tts issue #57).** The rescore ran with
+`ART_REPO=/home/xoy/wt-center` (the articulatory-tts PR #54 worktree, removed after that PR merged), so
+both VCTK `eval_vctk.json`s on `/data` record `metrics.accent_cosine.center_vector` (and the top-level
+`accent_center_vector`) as `/home/xoy/wt-center/accent_metric_diag/results/genaid_emb_centroid_mean.npy`,
+a path that no longer exists. The file is byte-identical to
+`accent_metric_diag/results/genaid_emb_centroid_mean.npy` on articulatory-tts main (sha256
+ce9ca6bc017b...379ef, committed once in PR #50); the model tag's `center_vector=genaid_emb_centroid_mean.npy`
+is the durable identifier. `ART_REPO` now defaults to `/home/xoy/articulatory-tts`, whose main carries the
+centering API since PR #54, so no override is needed for future runs.
+
 ## Status / results
 
 ### Final results (2026-09-08; all 10 sets scored; `eval/results/summary_Fun-CosyVoice3-0.5B-2512.md` has the full tables incl. per-speaker)
