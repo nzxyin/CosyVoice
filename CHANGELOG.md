@@ -3,6 +3,29 @@
 All notable changes to this clone. Upstream CosyVoice code is untouched; entries here are about the
 `eval/` pipeline and the environment on Babel.
 
+## 2026-09-16
+
+- Accent similarity switched from raw GenAID cosine to the CENTERED GenAID cosine (both the predicted
+  and ground-truth embeddings have a fixed centering vector -- the mean of the six speaker-balanced
+  VCTK-training-speaker accent centroids -- subtracted before the cosine; decision and diagnostic in
+  articulatory-tts CLAUDE.md "Accent-metric diagnostic"). The change again lives in articulatory-tts
+  (`genaid_accent.py`'s `DEFAULT_CENTER_VECTOR`/`load_center_vector`/`centered_model_tag`/
+  `accent_cosines`; `score_side_metric.py`/`score_side_per_utt.py` --center_vector/--no_center); here,
+  `eval/score_side_per_utt.py --metric accent` now centers by default too (same flags), storing the
+  centered value as `accent_cosine` and the raw GenAID value alongside as `accent_cosine_genaid_raw`
+  (per utterance, per `by_emotion`/`by_accent`/`by_speaker` group, and `results["accent_center_vector"]`
+  records the vector path); a re-run migrates any pre-centering per-group `accent_cosine` to
+  `accent_cosine_genaid_raw` before overwriting it, without touching any `*_commonaccent` key from the
+  2026-09-14 rescore. `--metric emotion` is unchanged.
+- Added `eval/run_rescore_accent_centered.sbatch` (modeled on `run_rescore_accent_genaid.sbatch`),
+  restricted to the two VCTK sets (`self`/`cross`; `--array=0-1`, since VCTK is the only dataset with an
+  accent breakdown) -- re-scores accent on the kept `wav_pairs_16k`, merges with
+  `merge_eval_results.py --keep_old_as genaid_raw`, moves any pre-centering per-group `accent_cosine` to
+  `accent_cosine_genaid_raw` before that merge, and redoes `eval/score_side_per_utt.py --metric accent`
+  (previous raw per-utt file kept as `eval_<dataset>_accent_per_utt_genaid_raw.json`, moved aside only if
+  it doesn't already carry a `center_vector` marker). Skip condition: `metrics.accent_cosine.model`
+  contains `"centroid-centered"`. Not yet run -- numbers to be filled in once it is.
+
 ## 2026-09-14
 
 - Accent similarity switched from CommonAccent to GenAID (https://github.com/jzmzhong/GenAID, GenAID_v6;

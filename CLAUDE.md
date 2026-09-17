@@ -29,7 +29,10 @@ upstream's `.gitignore` has `**/*build*`, which hides `eval/build_env.sbatch` an
   `eval-genaid` under `/data/user_data/xoy/venvs/`) and its `score_side_metric.py` /
   `merge_eval_results.py` unchanged. Accent cosine = GenAID (https://github.com/jzmzhong/GenAID,
   speaker-adversarial XLSR-53 accent ID, 64-dim embedding) since 2026-09-14; CommonAccent before
-  that, kept in every JSON as `accent_cosine_commonaccent` (not comparable).
+  that, kept in every JSON as `accent_cosine_commonaccent` (not comparable). **Since 2026-09-16 the
+  published `accent_cosine` is the CENTERED GenAID cosine** (both embeddings minus a fixed centering
+  vector -- see "Accent metric centering" below); the raw GenAID cosine used 2026-09-14..09-16 is kept
+  in every JSON as `accent_cosine_genaid_raw`.
 - torch 2.3.1 has no Blackwell kernels: GPU jobs exclude `preempt`'s RTX PRO 6000 nodes.
 
 ## Current direction (2026-09-08)
@@ -38,7 +41,30 @@ Done: the five test sets x two prompt modes (`self` for comparability with the s
 `cross` as the standard zero-shot protocol) are synthesized, scored and tabulated below. Possible
 follow-ups, none started: the `llm.rl.pt` RL variant (same pipeline, `CKPT_NAME`/`--model_dir`),
 `--no_text_frontend`, fp16/TRT speed, and re-reading the tables once articulatory-tts's GH #32
-rescore publishes the normalized VCTK floor.
+rescore publishes the normalized VCTK floor. **New (2026-09-16), not yet run**: rescore the two VCTK
+sets (`self`/`cross`) for the centered accent metric -- see "Accent metric centering" below.
+
+## Accent metric centering (2026-09-16)
+
+The accent-similarity metric (GenAID embedding cosine, prediction vs. ground truth) is now CENTERED:
+both embeddings have a fixed vector subtracted before the cosine, so 0 reads as the similarity of
+unrelated accents rather than GenAID's raw ~0.8 floor. This is a decision made in articulatory-tts,
+not here -- see its `CLAUDE.md`, "Accent-metric diagnostic" section, for the full reasoning
+(discrimination power is unaffected by centering; it only fixes the display scale) and the exact
+centering vector (mean of the six speaker-balanced VCTK-training-speaker accent centroids). The
+mechanism lives in `genaid_accent.py` (`DEFAULT_CENTER_VECTOR`, `accent_cosines()`); its
+`score_side_metric.py` / `score_side_per_utt.py` write the centered value as `accent_cosine` and the
+raw value alongside as `accent_cosine_genaid_raw`.
+
+This repo's `eval/score_side_per_utt.py --metric accent` mirrors that split (same flags,
+`--center_vector`/`--no_center`); `eval/run_rescore_accent_centered.sbatch` (new, modeled on
+`run_rescore_accent_genaid.sbatch`) re-scores the two VCTK sets on the wav pairs already on disk.
+**Not yet submitted** -- this session only wrote the code (worktree `eval/accent-centering`, branch
+off `eval/cosyvoice3-baseline`); the CosyVoice CLAUDE.md/README tables above still show the raw GenAID
+`Acc cos` values from 2026-09-14 until that rescore actually runs. Once it does: update the VCTK rows
+of the "Final results" and per-accent tables below with the centered numbers (keeping the raw ones
+alongside as `accent_cosine_genaid_raw`, same pattern as the CommonAccent-era columns), and note here
+whether centering changed any qualitative reading of the VCTK accent comparison.
 
 ## Status / results
 

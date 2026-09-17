@@ -17,6 +17,20 @@ mean reproduces the merged side metric. It mirrors the two sibling implementatio
                     minimum duration; plus emotion2vec's own 9-way top label for pred and GT ->
                     "emotion_label_agreement" per group. Run in the eval-emotion venv.
 Resumable: the per-utterance JSON is rewritten every 100 pairs and existing uids are skipped.
+
+2026-09-16: for --metric accent, the published accent_cosine is CENTERED -- both the predicted and
+ground-truth GenAID embeddings have genaid_accent.DEFAULT_CENTER_VECTOR (the mean of the six
+speaker-balanced VCTK-training-speaker accent centroids, see articulatory-tts CLAUDE.md
+"Accent-metric diagnostic") subtracted before the cosine, via genaid_accent.accent_cosines(); the raw
+(un-centered) cosine is kept alongside per utterance and per group as accent_cosine_genaid_raw, and
+each centered per-utterance record also carries its own "center_vector" path (the per-utt JSON is a
+flat uid->record map with no top-level metadata slot, so this is what a re-run checks to tell an
+already-centered file apart from a pre-centering raw one before deciding whether to move it aside).
+--center_vector overrides the vector, --no_center reports the raw cosine only (same flags as
+articulatory-tts's score_side_metric.py / score_side_per_utt.py). The by_emotion/by_accent/by_speaker
+summaries and the overall consistency check against the merged eval_<dataset>.json always use the
+centered accent_cosine; results["accent_center_vector"] records the vector path used. The --metric
+emotion path is unaffected by any of this.
 """
 import argparse
 import json
@@ -120,15 +134,27 @@ def main():
     ap.add_argument("--results_path", required=True, help="eval_<dataset>.json to update in place (by_* groups)")
     ap.add_argument("--per_utt_out", required=True)
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--center_vector", default=None,
+                     help="--metric accent: .npy centering vector subtracted from both embeddings before the "
+                          "cosine (default: genaid_accent.DEFAULT_CENTER_VECTOR, the 2026-09-16 centroid mean)")
+    ap.add_argument("--no_center", action="store_true", help="--metric accent: report the raw GenAID cosine only")
     args = ap.parse_args()
 
     import torch
     from tqdm import tqdm
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     metric_key = f"{args.metric}_cosine"
+    raw_key = "accent_cosine_genaid_raw"  # --metric accent only, populated when centering is on
     label_key = f"{args.metric}_label_agreement"
     target_map = ESD_TO_EMOTION2VEC if args.metric == "emotion" else VCTK_TO_GENAID
     group_field = "emotion" if args.metric == "emotion" else "accent_label"
+
+    mu, center_path, model_tag = None, None, ""
+    if args.metric == "accent":
+        import genaid_accent
+        center_path = None if args.no_center else (args.center_vector or genaid_accent.DEFAULT_CENTER_VECTOR)
+        mu = genaid_accent.load_center_vector(center_path) if center_path else None
+        model_tag = genaid_accent.centered_model_tag(center_path) if center_path else genaid_accent.MODEL_TAG
 
     items = load_items(args.dataset)
     if args.limit:
@@ -155,7 +181,18 @@ def main():
                 n_skipped += 1
                 rec["skipped"] = "too short"
             else:
-                rec[metric_key] = cosine(embed(pred), embed(gt))
+                if args.metric == "accent":
+                    centered, raw = genaid_accent.accent_cosines(embed(pred), embed(gt), mu)
+                    rec[metric_key] = centered
+                    if mu is not None:
+                        rec[raw_key] = raw
+                        # per-record marker (this file has no top-level metadata slot -- it's a flat
+                        # uid->record map) so a re-run of this job can tell an already-centered
+                        # eval_<dataset>_accent_per_utt.json apart from a pre-centering raw one without
+                        # re-deriving it from the aggregate results JSON.
+                        rec["center_vector"] = os.path.abspath(center_path)
+                else:
+                    rec[metric_key] = cosine(embed(pred), embed(gt))
                 pl, ps = label(pred)
                 gl, gs = label(gt)
                 rec.update({"pred_label": pl, "pred_label_score": ps, "gt_label": gl, "gt_label_score": gs})
@@ -175,6 +212,8 @@ def main():
         out = {}
         for g, recs in sorted(groups.items()):
             entry = {"n": len(recs), metric_key: summarize([r[metric_key] for r in recs])}
+            if args.metric == "accent" and mu is not None:
+                entry[raw_key] = summarize([r[raw_key] for r in recs if raw_key in r])
             # Label agreement is only meaningful for a group with ONE target label (an emotion group, an
             # accent group, or a VCTK speaker = one accent); an ESD speaker spans all five emotions.
             homogeneous = len({r[group_field] for r in recs}) == 1
@@ -202,13 +241,18 @@ def main():
         if len({r[field] for r in records.values()}) > 1:
             results.setdefault(out_key, {})
             for g, entry in by(field).items():
-                results[out_key].setdefault(g, {}).update(entry)
-    model_tag = ""
-    if args.metric == "accent":
-        import genaid_accent
-        model_tag = f"; {genaid_accent.MODEL_TAG}"
+                existing = results[out_key].setdefault(g, {})
+                if args.metric == "accent" and mu is not None and metric_key in existing and raw_key not in existing:
+                    # existing accent_cosine predates centering (a raw GenAID value from an earlier run of
+                    # this script or the rescore sbatch) -- preserve it before the centered value below
+                    # overwrites metric_key. Never touch any *_commonaccent key already present.
+                    existing[raw_key] = existing[metric_key]
+                existing.update(entry)
     results[f"{metric_key}_per_utt_source"] = (f"eval/score_side_per_utt.py --metric {args.metric} "
-                                              f"(same model/call path as articulatory-tts score_side_metric.py{model_tag})")
+                                              f"(same model/call path as articulatory-tts score_side_metric.py"
+                                              + (f"; {model_tag}" if model_tag else "") + ")")
+    if args.metric == "accent" and mu is not None:
+        results["accent_center_vector"] = os.path.abspath(center_path)
     write_json_atomic(results, args.results_path, indent=2)
     for out_key in ("by_emotion", "by_accent"):
         if out_key in results and any(metric_key in e for e in results[out_key].values()):
