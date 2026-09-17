@@ -29,7 +29,14 @@ upstream's `.gitignore` has `**/*build*`, which hides `eval/build_env.sbatch` an
   `eval-genaid` under `/data/user_data/xoy/venvs/`) and its `score_side_metric.py` /
   `merge_eval_results.py` unchanged. Accent cosine = GenAID (https://github.com/jzmzhong/GenAID,
   speaker-adversarial XLSR-53 accent ID, 64-dim embedding) since 2026-09-14; CommonAccent before
-  that, kept in every JSON as `accent_cosine_commonaccent` (not comparable).
+  that, kept in every JSON as `accent_cosine_commonaccent` (not comparable). **Since 2026-09-16 the
+  VCTK `accent_cosine` (the only sets with an accent breakdown) is the CENTERED GenAID cosine**
+  (both embeddings minus a fixed centering vector -- see "Accent metric centering" below; rescore
+  job 10473704, COMPLETED and verified); the raw GenAID cosine used 2026-09-14..09-16 is kept in the
+  VCTK JSONs as `accent_cosine_genaid_raw`. **LJSpeech/LibriTTS/ESD were not part of that rescore and
+  their `accent_cosine` remains raw (uncentered) GenAID** -- their `metrics.accent_cosine.model` has
+  no "centroid-centered" marker; label them as raw wherever they appear next to VCTK's centered
+  numbers.
 - torch 2.3.1 has no Blackwell kernels: GPU jobs exclude `preempt`'s RTX PRO 6000 nodes.
 
 ## Current direction (2026-09-08)
@@ -38,7 +45,53 @@ Done: the five test sets x two prompt modes (`self` for comparability with the s
 `cross` as the standard zero-shot protocol) are synthesized, scored and tabulated below. Possible
 follow-ups, none started: the `llm.rl.pt` RL variant (same pipeline, `CKPT_NAME`/`--model_dir`),
 `--no_text_frontend`, fp16/TRT speed, and re-reading the tables once articulatory-tts's GH #32
-rescore publishes the normalized VCTK floor.
+rescore publishes the normalized VCTK floor. **Done (2026-09-16), rescore job 10473704**: the two
+VCTK sets (`self`/`cross`) rescored for the centered accent metric -- see "Accent metric centering"
+below for the results.
+
+## Accent metric centering (2026-09-16, rescore job 10473704 COMPLETED and verified)
+
+The accent-similarity metric (GenAID embedding cosine, prediction vs. ground truth) is now CENTERED:
+both embeddings have a fixed vector subtracted before the cosine, so 0 reads as the similarity of
+unrelated accents rather than GenAID's raw ~0.8 floor. This is a decision made in articulatory-tts,
+not here -- see its `CLAUDE.md`, "Accent-metric diagnostic" section, for the full reasoning
+(discrimination power is unaffected by centering; it only fixes the display scale) and the exact
+centering vector (mean of the six speaker-balanced VCTK-training-speaker accent centroids). The
+mechanism lives in `genaid_accent.py` (`DEFAULT_CENTER_VECTOR`, `accent_cosines()`); its
+`score_side_metric.py` / `score_side_per_utt.py` write the centered value as `accent_cosine` and the
+raw value alongside as `accent_cosine_genaid_raw`.
+
+This repo's `eval/score_side_per_utt.py --metric accent` mirrors that split (same flags,
+`--center_vector`/`--no_center`); `eval/run_rescore_accent_centered.sbatch` (modeled on
+`run_rescore_accent_genaid.sbatch`) re-scored the two VCTK sets (SLURM array 10473704, task 0 =
+self, task 1 = cross) on the `wav_pairs_16k` already on disk. Both tasks COMPLETED; verified
+`metrics.accent_cosine.model` on both `eval_vctk.json`s contains `"centroid-centered"`, and the
+migration moved the pre-centering per-group values to `accent_cosine_genaid_raw` without touching
+any `*_commonaccent` key. Reference points for the new 0-1 scale: 0 = similarity of unrelated
+accents (mismatched-accent floor 0.019 per articulatory-tts), SPARC codec ceiling 0.824; for
+context if a table ever lines CosyVoice3 up against other systems (all centered): STArK-X
+zero-shot 0.252 / fine-tuned 0.536, XTTS-v2 0.625.
+
+**Results** (centered GenAID cosine, 95% CI):
+- self (n=2595): overall 0.817 ± 0.008 (superseded values kept in the JSON: raw GenAID 0.965 as
+  `accent_cosine_genaid_raw`, CommonAccent 0.877 as `accent_cosine_commonaccent`). Per accent:
+  American 0.912 ± 0.009, Canadian 0.935 ± 0.007, English 0.839 ± 0.014, Irish 0.825 ± 0.016,
+  Northern Irish 0.713 ± 0.021, Scottish 0.686 ± 0.023.
+- cross (n=2596): overall 0.611 ± 0.014 (superseded: raw GenAID 0.921, CommonAccent 0.791). Per
+  accent: American 0.876 ± 0.012, Canadian 0.900 ± 0.010, English 0.637 ± 0.024, Irish 0.537 ±
+  0.037, Northern Irish 0.393 ± 0.033, Scottish 0.347 ± 0.033.
+
+**Qualitative reading is unchanged by centering** -- the `cross` accent ranking (Canadian > American >
+English > Irish > Northern Irish > Scottish) and the GenAID-label-agreement view are identical to the
+raw-GenAID reading in the Findings below; centering only spreads the scale out (roughly 0.35-0.94
+instead of the raw 0.85-0.99 compressed band) so the gaps are visible on a 0-1 axis, without changing
+which system/accent looks better than which. (`self` has one exception either way: English and Irish
+trade places -- raw 0.9673 vs 0.9682, centered 0.839 vs 0.825 -- but their 95% CIs overlap in both
+readings, so this is a statistical tie, not a ranking centering changed.) Only the VCTK JSONs
+were rescored -- LJSpeech/LibriTTS/ESD `accent_cosine` values remain raw (uncentered) GenAID and
+must be labelled as such wherever they appear next to these VCTK numbers (see the note in "Layout
+/ environment" above). The "Final results" and per-accent tables below have been updated with the
+centered VCTK numbers.
 
 ## Status / results
 
@@ -52,7 +105,13 @@ prediction vs. ground truth (mean; ci95 in the JSONs). **Acc cos = GenAID since 
 kept wav pairs, job 10441103); the CommonAccent values these tables showed before are kept in each JSON as
 `accent_cosine_commonaccent` (self 0.853/0.893/0.862/0.853/0.877, cross 0.818/0.823/0.756/0.790/0.791 in
 row order) and are not comparable. GenAID cosines sit in a compressed 0.85-0.99 band for every system
-(its 64-dim post-GELU embedding shares a large common component), so read differences, not absolute values. RTF = generation wall time / audio seconds,
+(its 64-dim post-GELU embedding shares a large common component), so read differences, not absolute values.
+**The two `vctk` rows are the exception: since 2026-09-16 (rescore job 10473704, COMPLETED and verified)
+their `Acc cos` is the CENTERED GenAID cosine** (0 = similarity of unrelated accents; see "Accent metric
+centering" above for the full numbers, per-accent breakdown and CI), which is why they no longer sit in
+that compressed band -- do not compare the `vctk` `Acc cos` directly against the other four rows' raw
+GenAID values in this table. The pre-centering raw GenAID `vctk` values (self 0.965, cross 0.921) are
+kept in the JSONs as `accent_cosine_genaid_raw`. RTF = generation wall time / audio seconds,
 fp32 non-streaming on L40S/A6000/A100 (`preempt`). `<0.5s` = degenerate early-EOS outputs, scored as-is.
 
 | prompt | dataset | n | WER% raw | WER% norm | UTMOSv2 | DNSMOS ovr | Spk cos | Emo cos | Acc cos | RTF | <0.5s |
@@ -61,12 +120,12 @@ fp32 non-streaming on L40S/A6000/A100 (`preempt`). `<0.5s` = degenerate early-EO
 | self | libritts_test_clean | 4829/4830 | 12.48 | 3.63 | 3.483 | 3.247 | 0.842 | 0.939 | 0.985 | 0.75 | 49 |
 | self | libritts_test_other | 5104/5106 | 13.93 | 4.01 | 3.320 | 3.159 | 0.813 | 0.924 | 0.973 | 0.60 | 90 |
 | self | esd | 1498/1500 | 15.49 | 3.46 | 3.430 | 3.168 | 0.810 | 0.842 | 0.982 | 0.72 | 5 |
-| self | vctk | 2596/2596 | 4.82 | 2.26 | 3.481 | 3.169 | 0.829 | 0.943 | 0.965 | 0.79 | 4 |
+| self | vctk | 2596/2596 | 4.82 | 2.26 | 3.481 | 3.169 | 0.829 | 0.943 | 0.817 | 0.79 | 4 |
 | cross | ljspeech | 150/150 | 8.61 | 1.94 | 3.946 | 3.422 | 0.787 | 0.968 | 0.987 | 0.80 | 0 |
 | cross | libritts_test_clean | 4830/4830 | 11.28 | 2.40 | 3.538 | 3.271 | 0.608 | 0.918 | 0.973 | 0.54 | 17 |
 | cross | libritts_test_other | 5106/5106 | 13.14 | 2.97 | 3.399 | 3.189 | 0.544 | 0.900 | 0.946 | 0.71 | 31 |
 | cross | esd | 1500/1500 | 14.65 | 2.27 | 3.524 | 3.193 | 0.580 | 0.764 | 0.971 | 0.63 | 0 |
-| cross | vctk | 2596/2596 | 4.49 | 1.64 | 3.603 | 3.189 | 0.632 | 0.914 | 0.921 | 0.52 | 1 |
+| cross | vctk | 2596/2596 | 4.49 | 1.64 | 3.603 | 3.189 | 0.632 | 0.914 | 0.611 | 0.52 | 1 |
 
 Ground-truth WER floors (Whisper on the raw recordings, corpus-level, raw / normalized; from
 articulatory-tts's `gt_transcripts_*.json` as recomputed by the EmoSphere++ session, VCTK raw from
@@ -103,26 +162,29 @@ emotion2vec+ assigns the target emotion to the prediction / the ground truth):**
 | cross | Sad | 14.78 | 1.96 | 3.499 | 3.212 | 0.622 | 0.786 | 0.963 | 1.06 | 0.64 | 0.99 |
 | cross | Surprise | 14.79 | 2.46 | 3.429 | 3.152 | 0.524 | 0.464 | 0.973 | 1.09 | 0.19 | 0.95 |
 
-**Per-accent (VCTK, one held-out speaker per accent; accent cosine = GenAID embedding; "pred/GT
+**Per-accent (VCTK, one held-out speaker per accent; accent cosine = CENTERED GenAID embedding cosine
+since 2026-09-16 (rescore job 10473704, COMPLETED and verified; 0 = similarity of unrelated accents,
+mismatched-accent floor 0.019, SPARC codec ceiling 0.824 -- see "Accent metric centering" above for CI
+and the raw-GenAID/CommonAccent superseded values per accent); "pred/GT
 labelled" = fraction GenAID's 13-way classifier assigns the mapped label (American->us, Canadian->canadian,
-English->english, Irish and NorthernIrish->irish, Scottish->scottish). GenAID recognises the American,
+English->english, Irish and NorthernIrish->irish, Scottish->scottish), unaffected by centering. GenAID recognises the American,
 English and Scottish ground truth (95/76/44%) but not the Canadian or Northern Irish speaker (3/5%), so
 the label view is informative for the first three accents only):**
 
 | prompt | accent (speaker) | n | WER% raw | WER% norm | UTMOSv2 | DNSMOS ovr | Spk cos | Emo cos | Acc cos | pred/GT dur | pred labelled | GT labelled |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
-| self | American (p297) | 417 | 4.96 | 2.54 | 3.627 | 3.123 | 0.801 | 0.933 | 0.978 | 0.95 | 0.94 | 0.95 |
-| self | Canadian (p317) | 423 | 3.44 | 1.54 | 3.579 | 3.136 | 0.861 | 0.944 | 0.986 | 1.04 | 0.04 | 0.03 |
-| self | English (p270) | 462 | 6.23 | 2.55 | 3.326 | 3.219 | 0.826 | 0.936 | 0.967 | 1.04 | 0.65 | 0.76 |
-| self | Irish (p288) | 412 | 2.42 | 0.96 | 3.519 | 3.180 | 0.840 | 0.960 | 0.968 | 1.00 | 0.14 | 0.22 |
-| self | NorthernIrish (p304) | 423 | 4.21 | 2.32 | 3.712 | 3.163 | 0.828 | 0.954 | 0.960 | 0.95 | 0.02 | 0.05 |
-| self | Scottish (p281) | 459 | 7.32 | 3.54 | 3.166 | 3.185 | 0.821 | 0.933 | 0.931 | 1.04 | 0.24 | 0.45 |
-| cross | American (p297) | 417 | 3.90 | 1.82 | 3.765 | 3.147 | 0.568 | 0.896 | 0.970 | 0.93 | 0.96 | 0.95 |
-| cross | Canadian (p317) | 423 | 4.02 | 1.79 | 3.681 | 3.140 | 0.709 | 0.916 | 0.978 | 0.97 | 0.03 | 0.03 |
-| cross | English (p270) | 462 | 5.74 | 1.68 | 3.431 | 3.217 | 0.646 | 0.913 | 0.922 | 1.02 | 0.52 | 0.76 |
-| cross | Irish (p288) | 412 | 3.37 | 0.99 | 3.632 | 3.218 | 0.639 | 0.936 | 0.910 | 0.96 | 0.05 | 0.22 |
-| cross | NorthernIrish (p304) | 423 | 3.77 | 1.55 | 3.825 | 3.182 | 0.601 | 0.931 | 0.902 | 0.94 | 0.01 | 0.05 |
-| cross | Scottish (p281) | 459 | 5.87 | 1.98 | 3.325 | 3.222 | 0.627 | 0.895 | 0.853 | 1.02 | 0.07 | 0.44 |
+| self | American (p297) | 417 | 4.96 | 2.54 | 3.627 | 3.123 | 0.801 | 0.933 | 0.912 | 0.95 | 0.94 | 0.95 |
+| self | Canadian (p317) | 423 | 3.44 | 1.54 | 3.579 | 3.136 | 0.861 | 0.944 | 0.935 | 1.04 | 0.04 | 0.03 |
+| self | English (p270) | 462 | 6.23 | 2.55 | 3.326 | 3.219 | 0.826 | 0.936 | 0.839 | 1.04 | 0.65 | 0.76 |
+| self | Irish (p288) | 412 | 2.42 | 0.96 | 3.519 | 3.180 | 0.840 | 0.960 | 0.825 | 1.00 | 0.14 | 0.22 |
+| self | NorthernIrish (p304) | 423 | 4.21 | 2.32 | 3.712 | 3.163 | 0.828 | 0.954 | 0.713 | 0.95 | 0.02 | 0.05 |
+| self | Scottish (p281) | 459 | 7.32 | 3.54 | 3.166 | 3.185 | 0.821 | 0.933 | 0.686 | 1.04 | 0.24 | 0.45 |
+| cross | American (p297) | 417 | 3.90 | 1.82 | 3.765 | 3.147 | 0.568 | 0.896 | 0.876 | 0.93 | 0.96 | 0.95 |
+| cross | Canadian (p317) | 423 | 4.02 | 1.79 | 3.681 | 3.140 | 0.709 | 0.916 | 0.900 | 0.97 | 0.03 | 0.03 |
+| cross | English (p270) | 462 | 5.74 | 1.68 | 3.431 | 3.217 | 0.646 | 0.913 | 0.637 | 1.02 | 0.52 | 0.76 |
+| cross | Irish (p288) | 412 | 3.37 | 0.99 | 3.632 | 3.218 | 0.639 | 0.936 | 0.537 | 0.96 | 0.05 | 0.22 |
+| cross | NorthernIrish (p304) | 423 | 3.77 | 1.55 | 3.825 | 3.182 | 0.601 | 0.931 | 0.393 | 0.94 | 0.01 | 0.05 |
+| cross | Scottish (p281) | 459 | 5.87 | 1.98 | 3.325 | 3.222 | 0.627 | 0.895 | 0.347 | 1.02 | 0.07 | 0.44 |
 
 ### Findings
 
@@ -148,14 +210,22 @@ the label view is informative for the first three accents only):**
   19% of the time while it labels the ground truth correctly 93-100% of the time. Surprise is largely
   lost even with a same-speaker, same-emotion prompt; `self` (prompt = the target itself) only lifts it
   to 0.644 / 46%. Per-speaker emotion cosine is flat (0.72-0.81 `cross`).
-- **Accent (VCTK, `cross`, GenAID):** accent cosine Canadian 0.978 > American 0.970 > English 0.922 >
-  Irish 0.910 > NorthernIrish 0.902 > Scottish 0.853 -- the same ordering CommonAccent gave (Canadian >
-  American > NorthernIrish ~ Irish ~ English > Scottish), with the North-American speakers near the
-  ceiling and Scottish clearly last; Scottish and English also have the highest WER (raw 5.9 / 5.7%,
-  normalized 2.0 / 1.7%) and lowest UTMOSv2 (3.33 / 3.43). `self` prompting lifts every accent (0.931-0.986),
-  most for the British/Irish speakers (+0.05-0.08) and least for the North-American ones (+0.01). GenAID's
-  labels: the `cross` output is labelled `us` 96% of the time for the American speaker (GT 95%), `english`
-  52% for the English one (GT 76%), `scottish` only 7% for the Scottish one (GT 44%) -- i.e. under
+- **Accent (VCTK, `cross`, CENTERED GenAID, rescore job 10473704, 2026-09-16):** accent cosine Canadian
+  0.900 > American 0.876 > English 0.637 > Irish 0.537 > NorthernIrish 0.393 > Scottish 0.347 (0 =
+  similarity of unrelated accents, SPARC codec ceiling 0.824). Centering only rescales the axis and
+  leaves the ordering unchanged from the raw GenAID reading (Canadian 0.978 > American 0.970 > English
+  0.922 > Irish 0.910 > NorthernIrish 0.902 > Scottish 0.853, kept per-group as `accent_cosine_genaid_raw`)
+  and from CommonAccent before that (Canadian > American > NorthernIrish ~ Irish ~ English > Scottish,
+  kept as `accent_cosine_commonaccent`); the North-American speakers are still clearly ahead of the
+  British/Irish ones and Scottish is still last -- now visibly so (a 0.35-0.90 spread vs. the old
+  0.85-0.98 compression) rather than merely by rank. Scottish and English also have the highest WER (raw
+  5.9 / 5.7%, normalized 2.0 / 1.7%) and lowest UTMOSv2 (3.33 / 3.43). `self` prompting lifts every
+  accent's centered cosine (0.686-0.935), most for the British/Irish speakers (English +0.20, Irish
+  +0.29, NorthernIrish +0.32, Scottish +0.34) and least for the North-American ones (American and
+  Canadian both +0.04) -- centering makes this asymmetry far more visible than the raw values' uniform
+  +0.01-0.08 lift did. GenAID's labels (unaffected by centering): the `cross` output is labelled `us`
+  96% of the time for the American speaker (GT 95%), `english` 52% for the English one (GT 76%),
+  `scottish` only 7% for the Scottish one (GT 44%) -- i.e. under
   cross-utterance prompting the Scottish and Irish accents are partly lost even where the classifier does
   recognise the recordings; with the target as prompt (`self`) the rates rise to 65% / 24%. Speaker and
   accent are confounded (one speaker per accent).
