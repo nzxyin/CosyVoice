@@ -41,9 +41,12 @@ def main():
     for mode in args.modes:
         for p in sorted(glob.glob(os.path.join(args.root, mode, "eval_*.json"))):
             base = os.path.basename(p)
-            if base.endswith(("_per_utt.json", "_emotion.json", "_accent.json", "_accent_genaid.json", "_commonaccent.json")):
+            if base.endswith(("_per_utt.json", "_emotion.json", "_accent.json", "_accent_genaid.json", "_commonaccent.json",
+                               "_genaid_centered.json", "_genaid_raw.json")):
                 continue
             d = json.load(open(p))
+            if "dataset" not in d:
+                continue  # a side/per-utt payload that doesn't match any suffix above yet -- skip rather than KeyError
             if args.datasets and d["dataset"] not in args.datasets:
                 continue
             rows.append((mode, d))

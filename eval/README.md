@@ -22,8 +22,11 @@ references skipped -- exactly articulatory-tts's `wer` since GH #32, 2026-09-08)
 UTMOSv2, DNSMOS (p808/sig/bak/ovr), ECAPA-TDNN speaker cosine (prediction vs. ground truth),
 emotion2vec+ large emotion cosine and GenAID accent cosine (prediction vs. ground truth, both
 scored by the reference repo's own `score_side_metric.py` and merged with its
-`merge_eval_results.py`). Extras not in the reference: `wer_whisper_normalized` (Whisper
-normalizer on both sides; do not compare against articulatory-tts JSONs), `rtf`, durations.
+`merge_eval_results.py`). **Since 2026-09-16 the accent cosine is CENTERED** (both embeddings minus
+a fixed centering vector before the cosine -- see CLAUDE.md "Accent metric centering"); the raw
+GenAID cosine is kept alongside as `accent_cosine_genaid_raw`. Extras not in the reference:
+`wer_whisper_normalized` (Whisper normalizer on both sides; do not compare against
+articulatory-tts JSONs), `rtf`, durations.
 
 ## Environment (conda, on /data)
 

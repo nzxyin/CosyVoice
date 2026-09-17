@@ -25,6 +25,10 @@ All notable changes to this clone. Upstream CosyVoice code is untouched; entries
   (previous raw per-utt file kept as `eval_<dataset>_accent_per_utt_genaid_raw.json`, moved aside only if
   it doesn't already carry a `center_vector` marker). Skip condition: `metrics.accent_cosine.model`
   contains `"centroid-centered"`. Not yet run -- numbers to be filled in once it is.
+- `eval/summarize_results.py` skips the two new sidecar files (`*_genaid_centered.json`,
+  `*_accent_per_utt_genaid_raw.json`), same fix as the 2026-09-14 rescore needed for its own
+  sidecars, plus a `"dataset" not in d` guard so a future sidecar naming scheme fails safe instead
+  of `KeyError`ing. `eval/README.md`'s metrics paragraph now mentions the centered cosine.
 
 ## 2026-09-14
 
