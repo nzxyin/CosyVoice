@@ -18,7 +18,7 @@ COLS = [
     ("speaker_cosine", "Spk cos", 1, 3), ("emotion_cosine", "Emo cos", 1, 3), ("accent_cosine", "Acc cos", 1, 3),
     ("rtf", "RTF", 1, 3), ("n_pred_under_0p5s", "#pred<0.5s", 1, 0),
 ]
-ORDER = ["ljspeech", "libritts_test_clean", "libritts_test_other", "esd", "vctk"]
+ORDER = ["ljspeech", "libritts_test_clean", "libritts_test_other", "esd", "vctk", "vctk_new_accents"]
 
 
 def fmt(m, scale, nd):

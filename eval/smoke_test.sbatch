@@ -59,12 +59,12 @@ echo "=== resume check: re-score ljspeech (self) from its checkpoint (should sco
    --checkpoint "$CKPT_NAME" --prompt_mode self --results_path "$OUT_ROOT/self/eval_ljspeech.json" \
    --per_utt_out "$OUT_ROOT/self/eval_ljspeech_per_utt.json" --wav_pairs_dir "$OUT_ROOT/self/ljspeech/wav_pairs_16k"
 echo "=== emotion side metric (esd) ==="
-"$EMOTION_VENV/bin/python" -u "$ART_REPO/score_side_metric.py" --metric emotion \
+"$EMOTION_VENV/bin/python" -u "$ART_REPO/experiments/eval/score_side_metric.py" --metric emotion \
    --wav_pairs_dir "$OUT_ROOT/self/esd/wav_pairs_16k" --results_path "$OUT_ROOT/self/eval_esd_emotion.json"
 echo "=== accent side metric (vctk) ==="
-"$ACCENT_VENV/bin/python" -u "$ART_REPO/score_side_metric.py" --metric accent \
+"$ACCENT_VENV/bin/python" -u "$ART_REPO/experiments/eval/score_side_metric.py" --metric accent \
    --wav_pairs_dir "$OUT_ROOT/self/vctk/wav_pairs_16k" --results_path "$OUT_ROOT/self/eval_vctk_accent.json"
-"$EVAL_VENV/bin/python" -u "$ART_REPO/merge_eval_results.py" --base "$OUT_ROOT/self/eval_esd.json" --side "$OUT_ROOT/self/eval_esd_emotion.json"
-"$EVAL_VENV/bin/python" -u "$ART_REPO/merge_eval_results.py" --base "$OUT_ROOT/self/eval_vctk.json" --side "$OUT_ROOT/self/eval_vctk_accent.json"
+"$EVAL_VENV/bin/python" -u "$ART_REPO/experiments/eval/merge_eval_results.py" --base "$OUT_ROOT/self/eval_esd.json" --side "$OUT_ROOT/self/eval_esd_emotion.json"
+"$EVAL_VENV/bin/python" -u "$ART_REPO/experiments/eval/merge_eval_results.py" --base "$OUT_ROOT/self/eval_vctk.json" --side "$OUT_ROOT/self/eval_vctk_accent.json"
 for ds in $DATASETS; do echo "--- $ds ---"; python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(json.dumps(d['metrics'], indent=1))" "$OUT_ROOT/self/eval_${ds}.json"; done
 echo "SMOKE_DONE"

@@ -98,6 +98,16 @@ DATASETS = {
         # Currently a no-op (2596/2596 present), kept so the two stay in lockstep.
         "phn_ids_dir": "/data/user_data/xoy/VCTK/VCTK-Corpus/preprocessed/phn_ids_2",
     },
+    # The two speakers articulatory-tts added to its VCTK test set on 2026-09-16:
+    # SouthAfrican p336 and Indian p251, 782 utterances,
+    # vctk_only_plus_sa_in/test_new_accents.tsv. A separate set, so the
+    # 2,596-utterance `vctk` results above stay unchanged.
+    "vctk_new_accents": {
+        "split_path": "/data/user_data/xoy/vctk_globe_accent_splits/vctk_only_plus_sa_in/test_new_accents.tsv",
+        "raw_wav_dir": "/data/group_data/UTD-NAS/Databases/VCTK/VCTK-Corpus/wav48",
+        "txt_dir": "/data/group_data/UTD-NAS/Databases/VCTK/VCTK-Corpus/txt",
+        "phn_ids_dir": "/data/user_data/xoy/VCTK/VCTK-Corpus/preprocessed/phn_ids_2",
+    },
 }
 
 # CosyVoice3 instruct prefix every prompt_text carries (example.py, examples/libritts/cosyvoice3).
@@ -201,7 +211,7 @@ def load_items(dataset):
                 "gt_wav": wav_index.get(r["stem"], os.path.join(spec["raw_wav_dir"], spk, emotion, f"{r['stem']}.wav")),
                 "emotion": emotion, "accent_label": "unknown",
             })
-    elif dataset == "vctk":
+    elif dataset.startswith("vctk"):
         with open(spec["split_path"], newline="") as f:
             rows = list(csv.DictReader(f, delimiter="\t"))
         available = {fn[: -len(".phn.npy")] for fn in os.listdir(spec["phn_ids_dir"]) if fn.endswith(".phn.npy")}

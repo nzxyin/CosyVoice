@@ -84,11 +84,11 @@ else
   echo "stage 1 results already present, skipping to side metrics"
 fi
 if have_top_level_key "$SIDE_EMO" emotion_cosine; then echo "emotion side metric exists"; else
-  "$EMOTION_VENV/bin/python" -u "$ART_REPO/score_side_metric.py" --metric emotion \
+  "$EMOTION_VENV/bin/python" -u "$ART_REPO/experiments/eval/score_side_metric.py" --metric emotion \
     --wav_pairs_dir "$WAV_PAIRS" --results_path "$SIDE_EMO"
 fi
 if have_top_level_key "$SIDE_ACC" accent_cosine; then echo "accent side metric exists"; else
-  "$ACCENT_VENV/bin/python" -u "$ART_REPO/score_side_metric.py" --metric accent \
+  "$ACCENT_VENV/bin/python" -u "$ART_REPO/experiments/eval/score_side_metric.py" --metric accent \
     --wav_pairs_dir "$WAV_PAIRS" --results_path "$SIDE_ACC"
 fi
 # provenance first, then merge: the merge is what flips the skip condition above, so a preemption
@@ -101,5 +101,5 @@ d["side_metric_source"] = f"articulatory-tts@{art_sha} score_side_metric.py (emo
 d["eval_code_commit"] = own_sha
 tmp = p + ".tmp"; json.dump(d, open(tmp, "w"), indent=2); os.replace(tmp, p)
 PY
-"$EVAL_VENV/bin/python" -u "$ART_REPO/merge_eval_results.py" --base "$RESULTS" --side "$SIDE_EMO" "$SIDE_ACC"
+"$EVAL_VENV/bin/python" -u "$ART_REPO/experiments/eval/merge_eval_results.py" --base "$RESULTS" --side "$SIDE_EMO" "$SIDE_ACC"
 echo "SCORE_DONE $DATASET $PROMPT_MODE"

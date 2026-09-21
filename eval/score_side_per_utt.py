@@ -46,7 +46,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from synthesize_testset import load_items  # noqa: E402
 
 ART_REPO = os.environ.get("ART_REPO", "/home/xoy/articulatory-tts")  # genaid_accent.py lives with the reference side metric
-sys.path.insert(0, ART_REPO)
+sys.path.insert(0, os.path.join(ART_REPO, "experiments", "eval"))  # articulatory-tts PR #73 (2026-09-20) moved it off the repo root
 
 MIN_PAIR_DURATION_SEC = 0.1  # same floor as score_side_metric.py
 

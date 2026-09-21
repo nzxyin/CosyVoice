@@ -54,7 +54,7 @@ echo "pairs on disk: $(ls "$WAV_PAIRS"/*_pred.wav | wc -l)"
 is_centered_done() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); m=d.get("metrics",{}).get("accent_cosine",{}); sys.exit(0 if isinstance(m,dict) and "centroid-centered" in str(m.get("model","")) else 1)' "$1" 2>/dev/null; }
 
 if is_centered_done "$RESULTS"; then echo "aggregate already centered-GenAID-scored"; else
-  "$ACCENT_VENV/bin/python" -u "$ART_REPO/score_side_metric.py" --metric accent \
+  "$ACCENT_VENV/bin/python" -u "$ART_REPO/experiments/eval/score_side_metric.py" --metric accent \
     --wav_pairs_dir "$WAV_PAIRS" --results_path "$SIDE"
   python3 - "$RESULTS" "$(git -C "$ART_REPO" rev-parse HEAD)" "$(git rev-parse HEAD)" <<'PY'
 import json, os, sys, datetime
@@ -74,7 +74,7 @@ for grp in ("by_accent", "by_speaker", "by_emotion"):
             e["accent_cosine_genaid_raw"] = e["accent_cosine"]
 tmp = p + ".tmp"; json.dump(d, open(tmp, "w"), indent=2); os.replace(tmp, p)
 PY
-  "$EVAL_VENV/bin/python" -u "$ART_REPO/merge_eval_results.py" --base "$RESULTS" --side "$SIDE" --keep_old_as genaid_raw
+  "$EVAL_VENV/bin/python" -u "$ART_REPO/experiments/eval/merge_eval_results.py" --base "$RESULTS" --side "$SIDE" --keep_old_as genaid_raw
 fi
 
 OLD=$OUT_ROOT/eval_${DATASET}_accent_per_utt.json
