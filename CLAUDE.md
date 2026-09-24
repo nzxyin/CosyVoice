@@ -47,7 +47,62 @@ follow-ups, none started: the `llm.rl.pt` RL variant (same pipeline, `CKPT_NAME`
 `--no_text_frontend`, fp16/TRT speed, and re-reading the tables once articulatory-tts's GH #32
 rescore publishes the normalized VCTK floor. **Done (2026-09-16), rescore job 10473704**: the two
 VCTK sets (`self`/`cross`) rescored for the centered accent metric -- see "Accent metric centering"
-below for the results.
+below for the results. **Done (2026-09-24)**: ESD emotion eval redone as emotion cloning (`cross`) vs.
+emotion label (`cross_label`: Neutral same-speaker prompt + emotion instruct) -- see "ESD emotion
+conditions" below. Open follow-ups there: a label condition that keeps the prompt's speech tokens in the
+LLM context (e.g. `inference_zero_shot` with the instruct prepended to the Neutral prompt's transcript), to
+separate the inference-path cost from the emotion-source effect; cloning + label combined.
+
+## ESD emotion conditions: emotion cloning vs. emotion label (2026-09-24, jobs 10552443-10552447 COMPLETED)
+
+Explicit user request: redo the emotion eval with an emotion-cloning prompt AND an emotion-label prompt,
+mirroring articulatory-tts GH #91's emotion side (reference-derived vs. categorical conditioning, both
+cross-utterance). Full tables + pilot: `eval/results/summary_esd_emotion_conditions.md`; protocol:
+`eval/README.md` "ESD emotion conditions"; tracking issue nzxyin/CosyVoice#6.
+
+- **Emotion cloning = `cross`** (existing run, not re-synthesized): prompt = next stem in the target's sorted
+  (speaker, emotion) group, cyclic, `inference_zero_shot`. Verified identical to articulatory-tts's
+  `esd_english_splits/test_cross_ref_pairs.tsv` on 1500/1500 rows.
+- **Emotion label = `cross_label`**: prompt = a same-speaker **Neutral** utterance (each Neutral test utterance
+  prompts one target per emotion), emotion as a CosyVoice3 instruct through `inference_instruct2`, which gives
+  the prompt only to the flow decoder (the LLM sees the instruct, not the prompt's speech tokens). Instruct set
+  `en_plain_neutral` ("You are a helpful assistant. Please say a sentence in a very <angry|happy|sad|surprised>
+  tone.<|endofprompt|>"; bare prefix for Neutral), chosen per emotion on ESD **val** (pilot job 10552276): en beat
+  the repo's own Chinese template (请非常X地说一句话。) on every non-Neutral emotion (+0.061 [+0.033, +0.089]), but
+  en's Neutral phrase was worse than no instruct (-0.069 [-0.120, -0.020]). Instructs clearly work: vs. a
+  no-instruct control, +0.168 emotion cosine on the four emotions (val).
+
+| condition | n | WER% raw | WER% norm | UTMOSv2 | DNSMOS ovr | Spk cos | Emo cos | RTF |
+|---|---|---|---|---|---|---|---|---|
+| cloning (`cross`) | 1500/1500 | 14.65 | 2.27 | 3.524 | 3.193 | 0.580 ± 0.006 | 0.764 ± 0.012 | 0.63 |
+| label (`cross_label`) | 1500/1500 | 12.97 | 2.61 | 3.494 | 3.118 | 0.476 ± 0.006 | 0.616 ± 0.013 | 0.70 |
+
+| emotion | Emo cos cloning / label | label - cloning (paired 95% CI) | pred labelled target cloning / label | Spk cos cloning / label | pred/GT dur cloning / label |
+|---|---|---|---|---|---|
+| Angry | 0.891 / 0.803 | -0.088 [-0.108, -0.067] | 0.83 / 0.61 | 0.578 / 0.493 | 1.05 / 1.03 |
+| Happy | 0.768 / 0.582 | -0.186 [-0.210, -0.162] | 0.60 / 0.09 | 0.553 / 0.446 | 1.06 / 1.10 |
+| Neutral | 0.912 / 0.854 | -0.058 [-0.072, -0.043] | 0.96 / 0.92 | 0.623 / 0.555 | 1.09 / 0.84 |
+| Sad | 0.786 / 0.547 | -0.239 [-0.263, -0.213] | 0.64 / 0.07 | 0.622 / 0.449 | 1.06 / 1.07 |
+| Surprise | 0.464 / 0.292 | -0.172 [-0.203, -0.142] | 0.19 / 0.07 | 0.524 / 0.439 | 1.09 / 1.06 |
+
+Findings:
+- **Emotion cloning beats the emotion label on every emotion** (-0.149 [-0.160, -0.138] overall). With the label
+  alone, only Angry is conveyed reliably (61% labelled angry, vs 83% cloning); Happy, Sad and Surprise are
+  labelled as their target 7-9% of the time (cloning 60 / 64 / 19%). Same ordering as cloning (Neutral > Angry >
+  Happy/Sad > Surprise), Surprise weakest in both.
+- **Part of the gap is the inference path, not the emotion source.** Neutral targets get the same prompt
+  recording in both conditions and no instruct under `cross_label`, so their difference (-0.058 emotion cosine,
+  -0.068 speaker cosine, -0.121 UTMOSv2, outputs 16% shorter than GT) is the cost of `inference_instruct2`
+  dropping the prompt's speech tokens from the LLM context. Speaker cosine drops 0.104 overall for the same
+  reason; the voice then comes only from the flow decoder's prompt mel + x-vector.
+- Intelligibility: WER-norm 2.61% vs 2.27% (GT floor 2.78%); raw WER is lower under `cross_label` (12.97 vs
+  14.65), a punctuation/casing effect. UTMOSv2 within 0.03 overall.
+- Against the sibling systems: articulatory-tts's categorical-label emotion cosine is ~0.78 in-domain (fine-tuned
+  on ESD, speaker-blind, self speaker reference) and EmoSphere++'s paired (self-reference) 0.933; CosyVoice3's
+  label condition (0.616) is zero-shot through a text instruct, so the three are different setups -- report
+  cloning and label side by side rather than reading one number against another system's.
+- The `cross_label` overall `accent_cosine` (0.785) is centered GenAID (eight-accent vector, the scorer's
+  current default) while `cross`/`self` ESD are raw GenAID; not comparable, and not meaningful on ESD.
 
 ## Accent metric centering (2026-09-16, rescore job 10473704 COMPLETED and verified)
 
@@ -219,7 +274,9 @@ the label view is informative for the first three accents only):**
   Happy 0.768, Surprise 0.464; emotion2vec labels the output as the prompt's emotion 96 / 83 / 64 / 60 /
   19% of the time while it labels the ground truth correctly 93-100% of the time. Surprise is largely
   lost even with a same-speaker, same-emotion prompt; `self` (prompt = the target itself) only lifts it
-  to 0.644 / 46%. Per-speaker emotion cosine is flat (0.72-0.81 `cross`).
+  to 0.644 / 46%. Per-speaker emotion cosine is flat (0.72-0.81 `cross`). This `cross` row is the
+  emotion-cloning condition; the emotion-label condition (2026-09-24) is lower on every emotion (0.616
+  overall) -- see "ESD emotion conditions".
 - **Accent (VCTK, `cross`, CENTERED GenAID, rescore job 10473704, 2026-09-16):** accent cosine Canadian
   0.900 > American 0.876 > English 0.637 > Irish 0.537 > NorthernIrish 0.393 > Scottish 0.347 (0 =
   similarity of unrelated accents, SPARC codec ceiling 0.824). Centering only rescales the axis and

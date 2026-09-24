@@ -57,7 +57,7 @@ import numpy as np
 import torch
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from synthesize_testset import DATASETS, SPLIT_STATS, assign_prompts, load_items  # noqa: E402
+from synthesize_testset import DATASETS, PROMPT_MODES, SPLIT_STATS, assign_prompts, emotion_ref_provenance, load_items  # noqa: E402
 
 
 def summarize(values):
@@ -105,7 +105,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dataset", required=True, choices=list(DATASETS))
     ap.add_argument("--out_dir", required=True, help="synthesize_testset.py's --out_dir (wavs/ + manifests live here)")
-    ap.add_argument("--prompt_mode", choices=["self", "cross"], default="self",
+    ap.add_argument("--prompt_mode", choices=PROMPT_MODES, default="self",
                     help="must match what synthesize_testset.py was run with (checked against the manifests)")
     ap.add_argument("--checkpoint", required=True, help="checkpoint identifier recorded in the results JSON")
     ap.add_argument("--results_path", required=True)
@@ -248,6 +248,8 @@ def main():
                 "prompt_seconds_used": m.get("prompt_seconds_used"),
                 "spoken_text": " ".join(spoken) if isinstance(spoken, list) else spoken,
                 "pred_seconds": round(len(pred_wav) / pred_sr, 3), "gt_seconds": round(len(gt_wav) / gt_sr, 3)}
+            if m.get("instruct_text"):
+                rec["instruct_text"] = m["instruct_text"]
 
             if not args.skip_audio:
                 d = dnsmos_score(pred16)
@@ -364,6 +366,8 @@ def main():
         "synthesis_errors": {u: meta[u].get("error") for u in failed_uids if u in meta and meta[u].get("status") == "failed"},
         "metrics": metrics,
     }
+    if args.dataset.startswith("esd"):
+        results.update(emotion_ref_provenance(args.prompt_mode, items, split_info))
     if len({it["accent_label"] for it in ok}) > 1:
         results["by_accent"] = breakdown("accent_label")
     if len({it["emotion"] for it in ok}) > 1:
