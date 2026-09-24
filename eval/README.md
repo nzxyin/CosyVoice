@@ -91,6 +91,8 @@ yielded separately. See `example.py` for cross-lingual / instruct modes.
   per-group duration ratios of a results JSON from its per-utterance records, no Whisper re-run.
 - `summarize_results.py` -- Markdown tables over the results JSONs (overall + per-emotion / per-accent
   / per-speaker breakdowns).
+- `pilot_emotion_instruct.sbatch` / `pilot_emotion_instruct.py` -- ESD-val pilot (100 utts) that picks
+  the `cross_label` instruction wording; per-emotion emotion2vec+ cosine / label agreement / duration.
 
 Outputs land under `/data/user_data/xoy/cosyvoice3_eval/Fun-CosyVoice3-0.5B-2512/<prompt_mode>/`.
 
@@ -109,6 +111,9 @@ done
 # after all shards report SYNTH_DONE (or chain with --dependency=afterok:...):
 for mode in self cross; do for ds in ljspeech libritts_test_clean libritts_test_other esd vctk; do
   sbatch eval/run_score.sbatch $ds $mode; done; done
+# ESD emotion-label condition (the emotion-cloning condition is the `cross` esd run above):
+for i in 0 1; do sbatch eval/run_synth.sbatch esd $i 2 cross_label; done
+sbatch eval/run_score.sbatch esd cross_label; sbatch eval/run_side_per_utt.sbatch esd cross_label emotion
 ```
 
 ## Protocol notes
@@ -119,6 +124,21 @@ for mode in self cross; do for ds in ljspeech libritts_test_clean libritts_test_
   LLM it is optimistic: the model sees the speech tokens of the sentence it must produce.
   `cross` = another utterance of the same speaker (same speaker *and* emotion for ESD), the
   standard zero-shot protocol. Both are run and reported.
+- **ESD emotion conditions (2026-09-24).** Two cross-utterance conditions, mirroring articulatory-tts
+  GH #91's emotion side (reference-derived vs. categorical-label conditioning):
+  - *Emotion cloning* = `cross`: the prompt is the next stem in the target's sorted
+    (speaker, emotion) group, cyclic, so the emotion reaches the model only through the prompt
+    recording. Stem-for-stem identical to articulatory-tts's `emotion_ref_mode=cross` pairing
+    (`esd_english_splits/test_cross_ref_pairs.tsv`, all 1500 rows checked).
+  - *Emotion label* = `cross_label`: the emotion is a text instruction and the prompt is a
+    **Neutral** utterance of the same speaker (i-th target of a (speaker, emotion) group -> (i+1)-th
+    of the speaker's Neutral group, cyclic; for Neutral targets the `cross` pairing), through
+    `inference_instruct2`. There the instruct replaces the prompt transcript and the prompt's speech
+    tokens are not given to the LLM, only to the flow decoder (voice). Instruction wording:
+    `--emotion_instruct_set` (`synthesize_testset.EMOTION_INSTRUCT_SETS`), chosen on ESD val by
+    `pilot_emotion_instruct.sbatch` / `.py` (see CLAUDE.md for the pilot table).
+  ESD results JSONs record `emotion_ref_mode` (`self` / `cross` / `label`) and the stem-by-stem
+  `emotion_refs`, plus `emotion_instruct_set` / `emotion_instructs` for `label`.
 - **Instruct prefix.** Every prompt_text starts with `You are a helpful assistant.<|endofprompt|>`,
   as in `example.py` and the libritts CosyVoice3 recipe (all training sequences carry it).
 - **Text normalization.** `text_frontend=True` (default): wetext English normalization + number

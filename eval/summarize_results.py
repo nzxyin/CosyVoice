@@ -3,7 +3,7 @@
 dataset x prompt mode; the metrics articulatory-tts reports plus this repo's extras).
 
 Usage (on a node with /data mounted):
-  python eval/summarize_results.py [--root /data/user_data/xoy/cosyvoice3_eval/Fun-CosyVoice3-0.5B-2512] [--modes self cross]
+  python eval/summarize_results.py [--root /data/user_data/xoy/cosyvoice3_eval/Fun-CosyVoice3-0.5B-2512] [--modes self cross cross_label]
 """
 import argparse
 import glob
@@ -18,7 +18,7 @@ COLS = [
     ("speaker_cosine", "Spk cos", 1, 3), ("emotion_cosine", "Emo cos", 1, 3), ("accent_cosine", "Acc cos", 1, 3),
     ("rtf", "RTF", 1, 3), ("n_pred_under_0p5s", "#pred<0.5s", 1, 0),
 ]
-ORDER = ["ljspeech", "libritts_test_clean", "libritts_test_other", "esd", "vctk", "vctk_new_accents"]
+ORDER = ["ljspeech", "libritts_test_clean", "libritts_test_other", "esd", "esd_val", "vctk", "vctk_new_accents"]
 
 
 def fmt(m, scale, nd):
@@ -33,7 +33,7 @@ def fmt(m, scale, nd):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--root", default="/data/user_data/xoy/cosyvoice3_eval/Fun-CosyVoice3-0.5B-2512")
-    ap.add_argument("--modes", nargs="+", default=["self", "cross"])
+    ap.add_argument("--modes", nargs="+", default=["self", "cross", "cross_label"])
     ap.add_argument("--datasets", nargs="+", default=None)
     ap.add_argument("--breakdowns_only", action="store_true")
     args = ap.parse_args()

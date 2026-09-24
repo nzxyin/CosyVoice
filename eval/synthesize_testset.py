@@ -34,7 +34,20 @@ Speaker prompt (--prompt_mode):
   cross  a different utterance from the same speaker within the same test split (deterministic:
          the next uid in that speaker's sorted list, cyclic; for ESD the group is speaker x emotion
          so the prompt carries the target emotion). The standard zero-shot TTS protocol (Seed-TTS
-         eval / CV3-Eval style); report alongside `self`.
+         eval / CV3-Eval style); report alongside `self`. On ESD this is the EMOTION-CLONING
+         condition: the emotion reaches the model only through the prompt recording. The pairing is
+         identical, stem for stem, to articulatory-tts's emotion_ref_mode=cross (GH #91,
+         esd_english_splits/test_cross_ref_pairs.tsv; verified on all 1500 test rows 2026-09-24).
+  cross_label  (ESD only) the EMOTION-LABEL condition: the target emotion is given as a text
+         instruction and the prompt recording is a different, NEUTRAL utterance of the same speaker
+         (the i-th target of a (speaker, emotion) group gets the (i+1)-th, cyclic, of that speaker's
+         Neutral group -- for Neutral targets exactly the `cross` pairing). Inference goes through
+         CosyVoice3's instruct API, inference_instruct2(text, instruct, prompt_wav): the instruct
+         (--emotion_instruct_set, see EMOTION_INSTRUCT_SETS) replaces the prompt transcript, and the
+         prompt's speech tokens are NOT shown to the LLM (frontend_instruct2 drops them), so the
+         recording reaches only the flow decoder (mel prompt + CAM++ x-vector), i.e. the voice. This
+         is the counterpart of articulatory-tts's categorical-label conditioning (and EmoSphere++'s
+         emotion-ID input) to the reference-derived cloning condition above.
 
 Prompt length: CosyVoice's speech tokenizer rejects prompts > 30 s, so a longer prompt (a few
 LibriTTS-R utterances) is cropped to its first PROMPT_CROP_SEC seconds (written once under
@@ -89,6 +102,13 @@ DATASETS = {
         "split_path": "/data/user_data/xoy/esd_english_splits/test.tsv",
         "raw_wav_dir": "/data/group_data/UTD-NAS/Databases/ESD/ESD",
     },
+    # ESD's official val partition (1000 utts, 10 speakers x 5 emotions x 20), disjoint from test.
+    # Only used to choose the --emotion_instruct_set wording (eval/pilot_emotion_instruct.sbatch), so
+    # that choice is not tuned on the test set.
+    "esd_val": {
+        "split_path": "/data/user_data/xoy/esd_english_splits/val.tsv",
+        "raw_wav_dir": "/data/group_data/UTD-NAS/Databases/ESD/ESD",
+    },
     "vctk": {
         "split_path": "/data/user_data/xoy/vctk_globe_accent_splits/vctk_only/test.tsv",
         "raw_wav_dir": "/data/group_data/UTD-NAS/Databases/VCTK/VCTK-Corpus/wav48",
@@ -112,6 +132,41 @@ DATASETS = {
 
 # CosyVoice3 instruct prefix every prompt_text carries (example.py, examples/libritts/cosyvoice3).
 INSTRUCT_PREFIX = "You are a helpful assistant.<|endofprompt|>"
+
+PROMPT_MODES = ["self", "cross", "cross_label"]
+
+# --prompt_mode cross_label: ESD emotion -> instruction, sent as
+# "You are a helpful assistant. <instruction><|endofprompt|>". "zh" follows the only emotion instructs
+# the repo lists for CosyVoice3 (cosyvoice/utils/common.py instruct_list: 开心 / 伤心 / 生气 in the
+# "请非常X地说一句话。" template), extended with the same template to Surprise and a calm-tone phrase
+# for Neutral. "en" is the English form of the same template, modeled on the list's English volume
+# instructs ("Please say a sentence as loudly as possible."). "none" gives no emotion instruction at
+# all (control: Neutral prompt through the instruct API only). The default, "en_plain_neutral" = "en"
+# for the four emotions + no instruction for Neutral, was chosen per emotion on ESD val (pilot job
+# 10552276, 20 utts per emotion, paired bootstrap): en beat zh on each non-Neutral emotion (+0.061
+# emotion cosine [+0.033, +0.089] pooled), but en's Neutral phrase was worse than no instruction
+# (-0.069 [-0.120, -0.020]; zh's Neutral phrase vs none was a tie, +0.023 [-0.005, +0.051]).
+# See eval/pilot_emotion_instruct.sbatch and CLAUDE.md.
+EMOTION_INSTRUCT_SETS = {
+    "zh": {"Angry": "请非常生气地说一句话。", "Happy": "请非常开心地说一句话。", "Sad": "请非常伤心地说一句话。",
+           "Surprise": "请非常惊讶地说一句话。", "Neutral": "请用平静的语气说一句话。"},
+    "en": {"Angry": "Please say a sentence in a very angry tone.",
+           "Happy": "Please say a sentence in a very happy tone.",
+           "Sad": "Please say a sentence in a very sad tone.",
+           "Surprise": "Please say a sentence in a very surprised tone.",
+           "Neutral": "Please say a sentence in a calm, neutral tone."},
+    "none": {},
+}
+EMOTION_INSTRUCT_SETS["en_plain_neutral"] = {e: p for e, p in EMOTION_INSTRUCT_SETS["en"].items() if e != "Neutral"}
+DEFAULT_EMOTION_INSTRUCT_SET = "en_plain_neutral"
+
+
+def emotion_instruct_text(emotion, instruct_set):
+    """The instruct_text inference_instruct2 gets for one target emotion."""
+    phrase = EMOTION_INSTRUCT_SETS[instruct_set].get(emotion)
+    if not phrase and not (instruct_set == "none" or (instruct_set == "en_plain_neutral" and emotion == "Neutral")):
+        raise ValueError(f"no {instruct_set!r} instruction for emotion {emotion!r}")
+    return f"You are a helpful assistant. {phrase}<|endofprompt|>" if phrase else INSTRUCT_PREFIX
 # cosyvoice/cli/frontend.py asserts prompt <= 30 s; crop with a margin.
 MAX_PROMPT_SEC = 30.0
 PROMPT_CROP_SEC = 29.0
@@ -193,7 +248,7 @@ def load_items(dataset):
                 "gt_wav": os.path.join(d, f"{uid}.wav"),
                 "emotion": "unknown", "accent_label": "unknown",
             })
-    elif dataset == "esd":
+    elif dataset.startswith("esd"):
         with open(spec["split_path"], newline="") as f:
             rows = list(csv.DictReader(f, delimiter="\t"))
         wav_index = index_wavs(spec["raw_wav_dir"])
@@ -248,24 +303,53 @@ def load_items(dataset):
 def prompt_group_key(dataset, it):
     """Utterances eligible to prompt each other in --prompt_mode cross: same speaker, and for ESD
     also the same emotion (the target emotion is not inferable from the text alone)."""
-    return (it["speaker"], it["emotion"]) if dataset == "esd" else (it["speaker"],)
+    return (it["speaker"], it["emotion"]) if dataset.startswith("esd") else (it["speaker"],)
 
 
 def assign_prompts(items, mode, dataset):
-    """Sets prompt_wav / prompt_text / prompt_uid on every item."""
+    """Sets prompt_wav / prompt_text / prompt_uid on every item (items uid-sorted, as load_items
+    returns them)."""
     if mode == "self":
         for it in items:
             it["prompt_uid"], it["prompt_wav"], it["prompt_text"] = it["uid"], it["gt_wav"], it["text"]
         return
+    if mode == "cross_label" and not dataset.startswith("esd"):
+        raise ValueError("--prompt_mode cross_label needs emotion labels (ESD only)")
     groups = {}
     for it in items:
         groups.setdefault(prompt_group_key(dataset, it), []).append(it)
     for key, group in groups.items():
-        if len(group) == 1:
-            print(f"WARNING: group {key} has a single test utterance; cross prompt falls back to self")
+        if mode == "cross_label":
+            # i-th member of (speaker, emotion) -> (i+1)-th of (speaker, Neutral), cyclic. Never the target
+            # itself: a non-Neutral target is not in the Neutral group, and a one-member Neutral group raises.
+            source = groups.get((key[0], "Neutral"))
+            if not source:
+                raise ValueError(f"speaker {key[0]} has no Neutral utterance to prompt {key} with")
+            if key[1] == "Neutral" and len(source) == 1:
+                raise ValueError(f"Neutral group {key} has a single utterance; no cross prompt possible")
+        else:
+            source = group
+            if len(group) == 1:
+                print(f"WARNING: group {key} has a single test utterance; cross prompt falls back to self")
         for i, it in enumerate(group):
-            p = group[(i + 1) % len(group)]
+            p = source[(i + 1) % len(source)]
             it["prompt_uid"], it["prompt_wav"], it["prompt_text"] = p["uid"], p["gt_wav"], p["text"]
+
+
+# results-JSON name of each prompt mode's emotion condition on ESD (articulatory-tts records its
+# counterpart as "emotion_ref_mode": self | cross, next to the stem-by-stem "emotion_refs")
+EMOTION_REF_MODE = {"self": "self", "cross": "cross", "cross_label": "label"}
+
+
+def emotion_ref_provenance(prompt_mode, items, split_info=None):
+    """ESD provenance for a results JSON: which emotion condition, and the prompt recording each
+    target was conditioned on (items after assign_prompts)."""
+    out = {"emotion_ref_mode": EMOTION_REF_MODE[prompt_mode],
+           "emotion_refs": {it["uid"]: it["prompt_uid"] for it in items}}
+    if prompt_mode == "cross_label":
+        out["emotion_instruct_set"] = (split_info or {}).get("emotion_instruct_set")
+        out["emotion_instructs"] = (split_info or {}).get("emotion_instructs")
+    return out
 
 
 def prepare_prompt(prompt_wav, crop_dir):
@@ -292,7 +376,9 @@ def main():
     ap.add_argument("--dataset", required=True, choices=list(DATASETS))
     ap.add_argument("--model_dir", required=True, help="local Fun-CosyVoice3-0.5B-2512 dir (cosyvoice3.yaml, llm.pt, flow.pt, hift.pt, ...)")
     ap.add_argument("--out_dir", required=True, help="wavs go to <out_dir>/wavs/<uid>.wav; manifest JSONL alongside")
-    ap.add_argument("--prompt_mode", choices=["self", "cross"], default="self")
+    ap.add_argument("--prompt_mode", choices=PROMPT_MODES, default="self")
+    ap.add_argument("--emotion_instruct_set", choices=list(EMOTION_INSTRUCT_SETS), default=DEFAULT_EMOTION_INSTRUCT_SET,
+                    help="--prompt_mode cross_label only: wording of the emotion instruction (EMOTION_INSTRUCT_SETS)")
     ap.add_argument("--no_text_frontend", action="store_true",
                     help="pass text_frontend=False: skips wetext normalization / number spelling of the target text AND "
                          "CosyVoice's <=80-token paragraph splitting (frontend.text_normalize returns the text whole)")
@@ -309,6 +395,10 @@ def main():
 
     items = load_items(args.dataset)
     assign_prompts(items, args.prompt_mode, args.dataset)
+    label_mode = args.prompt_mode == "cross_label"
+    if label_mode:
+        for it in items:
+            it["instruct_text"] = emotion_instruct_text(it["emotion"], args.emotion_instruct_set)
     shard = items[args.shard_index::args.num_shards]
     if args.limit:
         shard = shard[: args.limit]
@@ -331,7 +421,11 @@ def main():
                        "n_dropped_missing_text_or_gt_wav": SPLIT_STATS["n_split_total"] - len(items),
                        "prompt_mode": args.prompt_mode, "model_dir": args.model_dir,
                        "text_frontend": not args.no_text_frontend, "fp16": args.fp16,
-                       "instruct_prefix": INSTRUCT_PREFIX}, f, indent=2)
+                       "instruct_prefix": INSTRUCT_PREFIX,
+                       **({"emotion_instruct_set": args.emotion_instruct_set,
+                           "emotion_instructs": {e: emotion_instruct_text(e, args.emotion_instruct_set)
+                                                 for e in sorted({it["emotion"] for it in items})}}
+                          if label_mode else {})}, f, indent=2)
         try:
             os.replace(tmp, info_path)
         except FileNotFoundError:
@@ -396,8 +490,15 @@ def main():
                     try:
                         chunks = []
                         with torch.no_grad():
-                            for out in model.inference_zero_shot(it["text"], prompt_text, prompt_path, stream=False, speed=1.0,
-                                                                 text_frontend=not args.no_text_frontend):
+                            if label_mode:
+                                # the instruct replaces the prompt transcript; the prompt's speech tokens are
+                                # dropped for the LLM (frontend_instruct2) and kept for the flow decoder
+                                gen = model.inference_instruct2(it["text"], it["instruct_text"], prompt_path, stream=False,
+                                                                speed=1.0, text_frontend=not args.no_text_frontend)
+                            else:
+                                gen = model.inference_zero_shot(it["text"], prompt_text, prompt_path, stream=False, speed=1.0,
+                                                                text_frontend=not args.no_text_frontend)
+                            for out in gen:
                                 chunks.append(out["tts_speech"])
                         if not chunks:
                             raise RuntimeError("model yielded no audio")
