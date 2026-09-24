@@ -3,6 +3,48 @@
 All notable changes to this clone. Upstream CosyVoice code is untouched; entries here are about the
 `eval/` pipeline and the environment on Babel.
 
+## 2026-09-24
+
+- ESD emotion eval redone as two cross-utterance conditions, mirroring articulatory-tts GH #91's emotion
+  side (reference-derived "emotion cloning" vs. categorical "emotion label" conditioning); branch
+  `eval/emotion-label-prompt`, tracking issue nzxyin/CosyVoice#6.
+  - Emotion cloning = the existing `cross` ESD run. Its prompt pairing (next stem in the target's sorted
+    (speaker, emotion) group, cyclic) was checked against articulatory-tts's
+    `esd_english_splits/test_cross_ref_pairs.tsv`: identical on 1500/1500 rows, so it was not re-run.
+  - New `--prompt_mode cross_label` in `synthesize_testset.py` (ESD only): the prompt is a same-speaker
+    Neutral utterance (i-th target of a (speaker, emotion) group -> (i+1)-th of the speaker's Neutral
+    group, cyclic; the `cross` pairing for Neutral targets; each Neutral test utterance prompts one target
+    per emotion), and the emotion is a text instruct through `inference_instruct2` (the prompt's speech
+    tokens reach only the flow decoder). `--emotion_instruct_set` selects the wording
+    (`EMOTION_INSTRUCT_SETS`: `zh`, `en`, `none`, `en_plain_neutral`); non-ESD datasets raise.
+  - Wording chosen on ESD val, not test: added an `esd_val` dataset (official `val.tsv`, 1000 utts) and
+    `eval/pilot_emotion_instruct.{sbatch,py}` (100 val utts = 2 per speaker x emotion, four conditions,
+    emotion2vec+ large via `score_side_per_utt.build_emotion_scorer`). Pilot job 10552276 (10552194 landed
+    on babel-u9-20, whose GPU is invisible to `nvidia-smi` -- cancelled; 10552213 failed because the new
+    worktree lacked the `third_party/Matcha-TTS` submodule -- `git submodule update --init` fixed it).
+    Default `en_plain_neutral` = the `en` instructs for Angry/Happy/Sad/Surprise and no emotion instruct
+    for Neutral (numbers in CLAUDE.md).
+  - ESD results JSONs now record `emotion_ref_mode` (`self`/`cross`/`label`), the stem-by-stem
+    `emotion_refs`, and for `label` the `emotion_instruct_set`/`emotion_instructs`; per-utterance records
+    keep `instruct_text`. Backfilled `emotion_ref_mode`/`emotion_refs` into the existing `self`/`cross`
+    `eval_esd.json` (taken from their manifests, asserted equal to the recomputed pairing; no metric
+    touched). `summarize_results.py` includes `cross_label` by default.
+  - Full test run: synth 10552443/10552444 (750 + 750, 0 failed, 0 retries), fill-in 10552445 (nothing
+    left to do), score 10552446, per-emotion 10552447 (all `preempt`, babel-u9-20 excluded), all
+    COMPLETED. `cross_label/eval_esd.json`: 1500/1500, `emotion_ref_mode: label`, 1500 `emotion_refs`.
+    Emotion cosine label 0.616 ± 0.013 vs cloning 0.764 ± 0.012 (paired -0.149 [-0.160, -0.138]); tables
+    in CLAUDE.md and the new `eval/results/summary_esd_emotion_conditions.md` (the main summary file is
+    left as it was). Emotion-side per-utt breakdown only; the accent per-utt stage was not run for this
+    set, and its overall `accent_cosine` is centered GenAID (the scorer's current default), not the raw
+    GenAID of the older ESD rows.
+
+## 2026-09-21
+
+- articulatory-tts PR #73 moved `score_side_metric.py`, `merge_eval_results.py` and `genaid_accent.py`
+  into its `experiments/eval/`; every launcher here that calls into that repo was repointed (commit
+  6746b95). Added the `vctk_new_accents` test set (SouthAfrican p336 + Indian p251, 782 utts,
+  `vctk_only_plus_sa_in/test_new_accents.tsv`) for articulatory-tts GH #91's accent-side rerun.
+
 ## 2026-09-17
 
 - CLAUDE.md "Accent metric centering": provenance caveat that the two VCTK JSONs record the centering
